@@ -3,6 +3,8 @@ const fs = require('fs')
 const path = require('path')
 const url = require('url')
 const crypto = require('crypto')
+let nodemailer
+try { nodemailer = require('nodemailer') } catch (e) { nodemailer = null }
 let MongoClient
 try { MongoClient = require('mongodb').MongoClient } catch (e) { MongoClient = null }
 const MONGO_URI = process.env.MONGO_URI
@@ -22,6 +24,29 @@ if (useMongo) {
   }).catch(err => { console.log('mongo', 'connect_error', err.message) })
 }
 function genToken(bytes = 24){ return crypto.randomBytes(bytes).toString('hex') }
+const APP_BASE_URL = process.env.APP_BASE_URL || ('http://localhost:' + (process.env.PORT || 3000))
+const SMTP_HOST = process.env.SMTP_HOST || ''
+const SMTP_PORT = parseInt(process.env.SMTP_PORT || '0', 10)
+const SMTP_SECURE = (process.env.SMTP_SECURE || 'false').toLowerCase() === 'true'
+const SMTP_USER = process.env.SMTP_USER || ''
+const SMTP_PASS = process.env.SMTP_PASS || ''
+const SMTP_FROM = process.env.SMTP_FROM || ''
+
+async function sendConfirmationEmail(to, link){
+  if (!nodemailer || !SMTP_HOST || !SMTP_PORT || !SMTP_USER || !SMTP_PASS || !SMTP_FROM) {
+    console.log('confirm', link)
+    return { sent: false }
+  }
+  try{
+    const transporter = nodemailer.createTransport({ host: SMTP_HOST, port: SMTP_PORT, secure: SMTP_SECURE, auth: { user: SMTP_USER, pass: SMTP_PASS } })
+    const info = await transporter.sendMail({ from: SMTP_FROM, to, subject: 'Confirme seu cadastro', text: `Finalize seu cadastro clicando: ${link}` })
+    return { sent: true, messageId: info.messageId }
+  }catch(e){
+    console.log('email_error', e.message)
+    console.log('confirm', link)
+    return { sent: false, error: e.message }
+  }
+}
 
 const DATA_FILE = path.join(__dirname, 'data.json')
 function readData(){ try{ return JSON.parse(fs.readFileSync(DATA_FILE, 'utf-8')) } catch(e){ return { users: [], sessions: [], clients: [], budgets: [], materialBudgets: [] } } }
@@ -107,7 +132,7 @@ const server = http.createServer((req, res) => {
   console.log(new Date().toISOString(), req.method, parsed.pathname)
   if (req.method === 'OPTIONS') { res.writeHead(204, { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET,POST,PATCH,OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type' }); return res.end() }
   if (parsed.pathname === '/api/health' && req.method === 'GET') return sendJson(res, 200, { ok: true })
-  if (parsed.pathname === '/api/auth/register' && req.method === 'POST') { let body=''; req.on('data', c=> body+=c); req.on('end', async () => { try{ const p = JSON.parse(body||'{}'); const email = (p.email||'').toLowerCase().trim(); const password = (p.password||'').trim(); if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return sendJson(res, 400, { error: 'email inválido' }); if (!password || password.length < 6) return sendJson(res, 400, { error: 'senha muito curta' }); const salt = crypto.randomBytes(16).toString('hex'); const hash = crypto.scryptSync(password, salt, 64).toString('hex'); const confirmToken = genToken(24); if (useMongo) { if (!mongoReady) return sendJson(res, 503, { error: 'mongo indisponível' }); const exists = await mongo.users.findOne({ email }); if (exists) return sendJson(res, 409, { error: 'email já cadastrado' }); await mongo.users.insertOne({ email, role: 'user', salt, passwordHash: hash, verified: false, confirmToken, createdAt: new Date() }); console.log('confirm', `http://localhost:3000/api/auth/confirm?token=${confirmToken}`); return sendJson(res, 200, { ok: true }) } const data = readData(); data.users = Array.isArray(data.users) ? data.users : []; const exists = data.users.find(u => (u.email||'').toLowerCase() === email); if (exists) return sendJson(res, 409, { error: 'email já cadastrado' }); const id = Date.now(); data.users.push({ id, email, role: 'user', salt, passwordHash: hash, verified: false, confirmToken, createdAt: Date.now() }); writeData(data); console.log('confirm', `http://localhost:3000/api/auth/confirm?token=${confirmToken}`); return sendJson(res, 200, { ok: true }) } catch(e){ return sendJson(res, 500, { error: e.message }) } }); return }
+  if (parsed.pathname === '/api/auth/register' && req.method === 'POST') { let body=''; req.on('data', c=> body+=c); req.on('end', async () => { try{ const p = JSON.parse(body||'{}'); const email = (p.email||'').toLowerCase().trim(); const password = (p.password||'').trim(); if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return sendJson(res, 400, { error: 'email inválido' }); if (!password || password.length < 6) return sendJson(res, 400, { error: 'senha muito curta' }); const salt = crypto.randomBytes(16).toString('hex'); const hash = crypto.scryptSync(password, salt, 64).toString('hex'); const confirmToken = genToken(24); const confirmLink = `${APP_BASE_URL}/api/auth/confirm?token=${confirmToken}`; if (useMongo) { if (!mongoReady) return sendJson(res, 503, { error: 'mongo indisponível' }); const exists = await mongo.users.findOne({ email }); if (exists) return sendJson(res, 409, { error: 'email já cadastrado' }); await mongo.users.insertOne({ email, role: 'user', salt, passwordHash: hash, verified: false, confirmToken, createdAt: new Date() }); const mail = await sendConfirmationEmail(email, confirmLink); return sendJson(res, 200, { ok: true, confirmLink: mail.sent ? undefined : confirmLink, hint: mail.sent ? undefined : 'E-mail não enviado; use o link' }) } const data = readData(); data.users = Array.isArray(data.users) ? data.users : []; const exists = data.users.find(u => (u.email||'').toLowerCase() === email); if (exists) return sendJson(res, 409, { error: 'email já cadastrado' }); const id = Date.now(); data.users.push({ id, email, role: 'user', salt, passwordHash: hash, verified: false, confirmToken, createdAt: Date.now() }); writeData(data); const mail = await sendConfirmationEmail(email, confirmLink); return sendJson(res, 200, { ok: true, confirmLink: mail.sent ? undefined : confirmLink, hint: mail.sent ? undefined : 'E-mail não enviado; use o link' }) } catch(e){ return sendJson(res, 500, { error: e.message }) } }); return }
   if (parsed.pathname === '/api/auth/confirm' && req.method === 'GET') { const token = (parsed.query && parsed.query.token) || null; if (!token) return sendJson(res, 400, { error: 'token obrigatório' }); if (useMongo) { if (!mongoReady) return sendJson(res, 503, { error: 'mongo indisponível' }); return mongo.users.findOne({ confirmToken: token }).then(async u => { if (!u) return sendJson(res, 404, { error: 'token inválido' }); await mongo.users.updateOne({ _id: u._id }, { $set: { verified: true }, $unset: { confirmToken: '' } }); return sendJson(res, 200, { ok: true }) }).catch(e => sendJson(res, 500, { error: e.message })) } const data = readData(); const idx = (data.users||[]).findIndex(u => u.confirmToken === token); if (idx < 0) return sendJson(res, 404, { error: 'token inválido' }); data.users[idx].verified = true; data.users[idx].confirmToken = null; writeData(data); return sendJson(res, 200, { ok: true }) }
   if (parsed.pathname === '/api/auth/login' && req.method === 'POST') { let body=''; req.on('data', c=> body+=c); req.on('end', async () => { try{ const p = JSON.parse(body||'{}'); if (useMongo) { if (!mongoReady) return sendJson(res, 503, { error: 'mongo indisponível' }); const user = await mongo.users.findOne({ email: (p.email||'').toLowerCase() }); if (!user) return sendJson(res, 401, { error: 'credenciais inválidas' }); const derived = crypto.scryptSync(p.password||'', user.salt, 64).toString('hex'); if (derived !== user.passwordHash) return sendJson(res, 401, { error: 'credenciais inválidas' }); if (!user.verified) return sendJson(res, 403, { error: 'confirme seu email' }); const token = createSession(user._id); return sendJson(res, 200, { token, role: user.role, email: user.email }) } const data = readData(); const user = (data.users||[]).find(u => (u.email||'').toLowerCase() === (p.email||'').toLowerCase()); if (!user) return sendJson(res, 401, { error: 'credenciais inválidas' }); const derived = crypto.scryptSync(p.password||'', user.salt, 64).toString('hex'); if (derived !== user.passwordHash) return sendJson(res, 401, { error: 'credenciais inválidas' }); if (!user.verified) return sendJson(res, 403, { error: 'confirme seu email' }); const token = createSession(user.id); return sendJson(res, 200, { token, role: user.role, email: user.email }) } catch(e){ return sendJson(res, 500, { error: e.message }) } }); return }
   if (parsed.pathname === '/api/auth/me' && req.method === 'GET') { const user = getAuthUser(req); if (!user) return sendJson(res, 401, { error: 'não autorizado' }); return sendJson(res, 200, { email: user.email, role: user.role }) }

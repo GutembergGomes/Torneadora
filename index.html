@@ -927,7 +927,7 @@
         let orcamentoAtual = null;
         let contadorOrcamento = parseInt(localStorage.getItem('tornearia_contador') || '1');
         let notaFiscalAtual = null;
-        const API_BASE = window.location.origin;
+        const API_BASE = window.API_URL || window.location.origin;
         let apiDisponivel = false;
         let authToken = localStorage.getItem('auth_token') || '';
         let userRole = localStorage.getItem('user_role') || '';
@@ -1063,7 +1063,7 @@
             }
             const btnRegister = document.getElementById('btn-register');
             if (btnRegister) {
-                btnRegister.addEventListener('click', async function(){ try{ const email = document.getElementById('register-email').value.trim(); const p1 = document.getElementById('register-password').value; const p2 = document.getElementById('register-password2').value; if (!email || !p1 || p1.length < 6 || p1 !== p2) { showAlert('Preencha corretamente o e-mail e senha.'); return; } const resp = await fetch(API_BASE + '/api/auth/register', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ email, password: p1 }) }); if (!resp.ok) { const err = await resp.json().catch(()=>({error:'erro'})); showAlert(err.error || 'Erro ao registrar.'); return; } showAlert('Conta criada. Verifique seu e-mail para confirmar.'); confirmBox.classList.remove('hidden'); } catch(e){ showAlert('Erro ao registrar.'); } });
+                btnRegister.addEventListener('click', async function(){ try{ const email = document.getElementById('register-email').value.trim(); const p1 = document.getElementById('register-password').value; const p2 = document.getElementById('register-password2').value; if (!email || !p1 || p1.length < 6 || p1 !== p2) { showAlert('Preencha corretamente o e-mail e senha.'); return; } const resp = await fetch(API_BASE + '/api/auth/register', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ email, password: p1 }) }); const data = await resp.json().catch(()=>({})); if (!resp.ok) { showAlert((data && data.error) || 'Erro ao registrar.'); return; } let msg = 'Conta criada. Verifique seu e-mail para confirmar.'; if (data && data.confirmLink) { msg += '\nSe o e-mail não chegar, use este link: ' + data.confirmLink; document.getElementById('confirm-token').value = new URL(data.confirmLink).searchParams.get('token') || ''; } showAlert(msg); confirmBox.classList.remove('hidden'); } catch(e){ showAlert('Erro ao registrar.'); } });
             }
             const btnConfirm = document.getElementById('btn-confirm');
             if (btnConfirm) {
