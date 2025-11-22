@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: torneadora-api
+    runtime: node
+    plan: free
+    region: oregon
+    autoDeploy: true
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: MONGO_URI
+        sync: false
+      - key: MONGO_DB
+        value: tornearia
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_SECURE
+        value: "false"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: SMTP_FROM
+        sync: false
+      - key: APP_BASE_URL
+        value: ${RENDER_EXTERNAL_URL}

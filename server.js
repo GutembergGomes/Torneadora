@@ -24,7 +24,7 @@ if (useMongo) {
   }).catch(err => { console.log('mongo', 'connect_error', err.message) })
 }
 function genToken(bytes = 24){ return crypto.randomBytes(bytes).toString('hex') }
-const APP_BASE_URL = process.env.APP_BASE_URL || ('http://localhost:' + (process.env.PORT || 3000))
+const APP_BASE_URL = process.env.APP_BASE_URL || process.env.RENDER_EXTERNAL_URL || ('http://localhost:' + (process.env.PORT || 3000))
 const SMTP_HOST = process.env.SMTP_HOST || ''
 const SMTP_PORT = parseInt(process.env.SMTP_PORT || '0', 10)
 const SMTP_SECURE = (process.env.SMTP_SECURE || 'false').toLowerCase() === 'true'
