@@ -3,6 +3,7 @@ const fs = require('fs')
 const path = require('path')
 const url = require('url')
 const crypto = require('crypto')
+const https = require('https')
 let createSupabaseClient
 try { createSupabaseClient = require('@supabase/supabase-js').createClient } catch (e) { createSupabaseClient = null }
 let nodemailer
@@ -26,9 +27,29 @@ if (useMongo) {
   }).catch(err => { console.log('mongo', 'connect_error', err.message) })
 }
 const SUPABASE_URL = process.env.SUPABASE_URL
-const SUPABASE_SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE || process.env.SUPABASE_KEY
-const useSupabase = !!(SUPABASE_URL && SUPABASE_SERVICE_ROLE && createSupabaseClient)
-const supabase = useSupabase ? createSupabaseClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE) : null
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE || process.env.SUPABASE_KEY
+const supabaseClientAvailable = !!(createSupabaseClient && SUPABASE_URL && SUPABASE_KEY)
+const useSupabase = !!(SUPABASE_URL && SUPABASE_KEY)
+const supabase = supabaseClientAvailable ? createSupabaseClient(SUPABASE_URL, SUPABASE_KEY) : null
+
+function sbRest(method, table, query, body){
+  return new Promise((resolve, reject) => {
+    try{
+      const u = new URL((SUPABASE_URL||'').replace(/\/$/, '') + '/rest/v1/' + table)
+      if (query && typeof query === 'object') {
+        Object.keys(query).forEach(k => u.searchParams.append(k, query[k]))
+      }
+      const opts = { method, headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY, 'Content-Type': 'application/json', 'Accept': 'application/json', 'Prefer': 'return=representation' } }
+      const req = https.request(u, opts, res => { let data=''; res.on('data', d => data += d); res.on('end', () => { let json=null; try{ json = data ? JSON.parse(data) : null }catch(e){}; if (res.statusCode >= 200 && res.statusCode < 300) return resolve(json); const msg = (json && (json.message||json.error)) || ('HTTP ' + res.statusCode); return reject(new Error(msg)) }) })
+      req.on('error', reject)
+      if (body) req.write(JSON.stringify(body))
+      req.end()
+    }catch(e){ reject(e) }
+  })
+}
+async function sbFindOne(table, filters){ const q = { select: '*', limit: '1' }; Object.keys(filters||{}).forEach(k => { q[k] = 'eq.' + filters[k] }); const res = await sbRest('GET', table, q); return Array.isArray(res) && res.length ? res[0] : null }
+async function sbInsert(table, obj){ const res = await sbRest('POST', table, { select: '*' }, obj); return Array.isArray(res) ? res[0] : res }
+async function sbUpdate(table, filters, obj){ const q = {}; Object.keys(filters||{}).forEach(k => { q[k] = 'eq.' + filters[k] }); const res = await sbRest('PATCH', table, { ...q, select: '*' }, obj); return Array.isArray(res) ? res[0] : res }
 function genToken(bytes = 24){ return crypto.randomBytes(bytes).toString('hex') }
 const APP_BASE_URL = process.env.APP_BASE_URL || process.env.RENDER_EXTERNAL_URL || ('http://localhost:' + (process.env.PORT || 3000))
 const SMTP_HOST = process.env.SMTP_HOST || ''
@@ -70,11 +91,17 @@ async function ensureDefaultAdmin(){
     return
   }
   if (useSupabase) {
-    const { data: exists } = await supabase.from('users').select('id').eq('email', 'admin@tornearia.local').limit(1).maybeSingle()
+    const exists = supabaseClientAvailable
+      ? (await supabase.from('users').select('id').eq('email', 'admin@tornearia.local').limit(1).maybeSingle()).data
+      : (await sbFindOne('users', { email: 'admin@tornearia.local' }))
     if (!exists) {
       const salt = crypto.randomBytes(16).toString('hex')
       const hash = crypto.scryptSync('admin123', salt, 64).toString('hex')
-      await supabase.from('users').insert({ email: 'admin@tornearia.local', role: 'admin', salt, password_hash: hash, verified: true, created_at: new Date().toISOString() })
+      if (supabaseClientAvailable) {
+        await supabase.from('users').insert({ email: 'admin@tornearia.local', role: 'admin', salt, password_hash: hash, verified: true, created_at: new Date().toISOString() })
+      } else {
+        await sbInsert('users', { email: 'admin@tornearia.local', role: 'admin', salt, password_hash: hash, verified: true, created_at: new Date().toISOString() })
+      }
     }
     return
   }
@@ -93,7 +120,7 @@ if (useMongo) { (async () => { await new Promise(r => setTimeout(r, 500)); await
 function createSession(userId){
   const token = crypto.randomBytes(24).toString('hex')
   const expires = Date.now() + 12 * 60 * 60 * 1000
-  if (useSupabase) { supabase.from('sessions').insert({ token, user_id: userId, expires }); return token }
+  if (useSupabase) { if (supabaseClientAvailable) { supabase.from('sessions').insert({ token, user_id: userId, expires }); } else { sbInsert('sessions', { token, user_id: userId, expires }).catch(()=>{}) } return token }
   if (useMongo) { if (!mongoReady) return null; mongo.sessions.insertOne({ token, userId, expires }); return token }
   const data = readData()
   const session = { token, userId, expires }
@@ -109,12 +136,21 @@ function getAuthUser(req){
   if (parts.length !== 2 || parts[0] !== 'Bearer') return null
   const token = parts[1]
   if (useSupabase) {
-    return supabase.from('sessions').select('*').eq('token', token).limit(1).maybeSingle().then(async ({ data: session }) => {
-      if (!session) return null
-      if (session.expires < Date.now()) return null
-      const { data: user } = await supabase.from('users').select('*').eq('id', session.user_id).limit(1).maybeSingle()
-      return user ? { id: user.id, email: user.email, role: user.role } : null
-    }).catch(() => null)
+    if (supabaseClientAvailable) {
+      return supabase.from('sessions').select('*').eq('token', token).limit(1).maybeSingle().then(async ({ data: session }) => {
+        if (!session) return null
+        if (session.expires < Date.now()) return null
+        const { data: user } = await supabase.from('users').select('*').eq('id', session.user_id).limit(1).maybeSingle()
+        return user ? { id: user.id, email: user.email, role: user.role } : null
+      }).catch(() => null)
+    } else {
+      return sbFindOne('sessions', { token }).then(async (session) => {
+        if (!session) return null
+        if (session.expires < Date.now()) return null
+        const user = await sbFindOne('users', { id: session.user_id })
+        return user ? { id: user.id, email: user.email, role: user.role } : null
+      }).catch(() => null)
+    }
   }
   if (useMongo) {
     if (!mongoReady) return null
@@ -157,9 +193,9 @@ const server = http.createServer((req, res) => {
   if (req.method === 'OPTIONS') { res.writeHead(204, { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET,POST,PATCH,OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type, Authorization' }); return res.end() }
   if (parsed.pathname === '/api/health' && req.method === 'GET') { const mode = useSupabase ? 'supabase' : (useMongo ? 'mongo' : 'file'); return sendJson(res, 200, { ok: true, mode }) }
   if (parsed.pathname === '/env.js' && req.method === 'GET') { const base = process.env.APP_BASE_URL || (`http://${req.headers.host}`); const js = `window.API_URL=${JSON.stringify(base)};`; res.writeHead(200, { 'Content-Type': 'application/javascript' }); return res.end(js) }
-  if (parsed.pathname === '/api/auth/register' && req.method === 'POST') { let body=''; req.on('data', c=> body+=c); req.on('end', async () => { try{ const p = JSON.parse(body||'{}'); const email = (p.email||'').toLowerCase().trim(); const password = (p.password||'').trim(); if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return sendJson(res, 400, { error: 'email inválido' }); if (!password || password.length < 6) return sendJson(res, 400, { error: 'senha muito curta' }); const salt = crypto.randomBytes(16).toString('hex'); const hash = crypto.scryptSync(password, salt, 64).toString('hex'); const confirmToken = genToken(24); const confirmLink = `${APP_BASE_URL}/api/auth/confirm?token=${confirmToken}`; if (useSupabase) { const exists = await supabase.from('users').select('id').eq('email', email).limit(1).maybeSingle(); if (exists.error) return sendJson(res, 500, { error: exists.error.message }); if (exists.data) return sendJson(res, 409, { error: 'email já cadastrado' }); const ins = await supabase.from('users').insert({ email, role: 'user', salt, password_hash: hash, verified: false, confirm_token: confirmToken, created_at: new Date().toISOString() }).select('id').maybeSingle(); if (ins.error) return sendJson(res, 500, { error: ins.error.message }); const mail = await sendConfirmationEmail(email, confirmLink); return sendJson(res, 200, { ok: true, confirmLink: mail.sent ? undefined : confirmLink, hint: mail.sent ? undefined : 'E-mail não enviado; use o link' }) } if (useMongo) { if (!mongoReady) return sendJson(res, 503, { error: 'mongo indisponível' }); const exists = await mongo.users.findOne({ email }); if (exists) return sendJson(res, 409, { error: 'email já cadastrado' }); await mongo.users.insertOne({ email, role: 'user', salt, passwordHash: hash, verified: false, confirmToken, createdAt: new Date() }); const mail = await sendConfirmationEmail(email, confirmLink); return sendJson(res, 200, { ok: true, confirmLink: mail.sent ? undefined : confirmLink, hint: mail.sent ? undefined : 'E-mail não enviado; use o link' }) } const data = readData(); data.users = Array.isArray(data.users) ? data.users : []; const exists = data.users.find(u => (u.email||'').toLowerCase() === email); if (exists) return sendJson(res, 409, { error: 'email já cadastrado' }); const id = Date.now(); data.users.push({ id, email, role: 'user', salt, passwordHash: hash, verified: false, confirmToken, createdAt: Date.now() }); writeData(data); const mail = await sendConfirmationEmail(email, confirmLink); return sendJson(res, 200, { ok: true, confirmLink: mail.sent ? undefined : confirmLink, hint: mail.sent ? undefined : 'E-mail não enviado; use o link' }) } catch(e){ return sendJson(res, 500, { error: e.message }) } }); return }
-  if (parsed.pathname === '/api/auth/confirm' && req.method === 'GET') { const token = (parsed.query && parsed.query.token) || null; if (!token) return sendJson(res, 400, { error: 'token obrigatório' }); if (useSupabase) { const { data: u } = await supabase.from('users').select('id').eq('confirm_token', token).limit(1).maybeSingle(); if (!u) return sendJson(res, 404, { error: 'token inválido' }); await supabase.from('users').update({ verified: true, confirm_token: null }).eq('id', u.id); return sendJson(res, 200, { ok: true }) } if (useMongo) { if (!mongoReady) return sendJson(res, 503, { error: 'mongo indisponível' }); return mongo.users.findOne({ confirmToken: token }).then(async u => { if (!u) return sendJson(res, 404, { error: 'token inválido' }); await mongo.users.updateOne({ _id: u._id }, { $set: { verified: true }, $unset: { confirmToken: '' } }); return sendJson(res, 200, { ok: true }) }).catch(e => sendJson(res, 500, { error: e.message })) } const data = readData(); const idx = (data.users||[]).findIndex(u => u.confirmToken === token); if (idx < 0) return sendJson(res, 404, { error: 'token inválido' }); data.users[idx].verified = true; data.users[idx].confirmToken = null; writeData(data); return sendJson(res, 200, { ok: true }) }
-  if (parsed.pathname === '/api/auth/login' && req.method === 'POST') { let body=''; req.on('data', c=> body+=c); req.on('end', async () => { try{ const p = JSON.parse(body||'{}'); if (useSupabase) { const { data: user } = await supabase.from('users').select('*').eq('email', (p.email||'').toLowerCase()).limit(1).maybeSingle(); if (!user) return sendJson(res, 401, { error: 'credenciais inválidas' }); const derived = crypto.scryptSync(p.password||'', user.salt, 64).toString('hex'); if (derived !== (user.password_hash||user.passwordHash)) return sendJson(res, 401, { error: 'credenciais inválidas' }); if (!user.verified) return sendJson(res, 403, { error: 'confirme seu email' }); const token = createSession(user.id); return sendJson(res, 200, { token, role: user.role, email: user.email }) } if (useMongo) { if (!mongoReady) return sendJson(res, 503, { error: 'mongo indisponível' }); const user = await mongo.users.findOne({ email: (p.email||'').toLowerCase() }); if (!user) return sendJson(res, 401, { error: 'credenciais inválidas' }); const derived = crypto.scryptSync(p.password||'', user.salt, 64).toString('hex'); if (derived !== user.passwordHash) return sendJson(res, 401, { error: 'credenciais inválidas' }); if (!user.verified) return sendJson(res, 403, { error: 'confirme seu email' }); const token = createSession(user._id); return sendJson(res, 200, { token, role: user.role, email: user.email }) } const data = readData(); const user = (data.users||[]).find(u => (u.email||'').toLowerCase() === (p.email||'').toLowerCase()); if (!user) return sendJson(res, 401, { error: 'credenciais inválidas' }); const derived = crypto.scryptSync(p.password||'', user.salt, 64).toString('hex'); if (derived !== user.passwordHash) return sendJson(res, 401, { error: 'credenciais inválidas' }); if (!user.verified) return sendJson(res, 403, { error: 'confirme seu email' }); const token = createSession(user.id); return sendJson(res, 200, { token, role: user.role, email: user.email }) } catch(e){ return sendJson(res, 500, { error: e.message }) } }); return }
+  if (parsed.pathname === '/api/auth/register' && req.method === 'POST') { let body=''; req.on('data', c=> body+=c); req.on('end', async () => { try{ const p = JSON.parse(body||'{}'); const email = (p.email||'').toLowerCase().trim(); const password = (p.password||'').trim(); if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return sendJson(res, 400, { error: 'email inválido' }); if (!password || password.length < 6) return sendJson(res, 400, { error: 'senha muito curta' }); const salt = crypto.randomBytes(16).toString('hex'); const hash = crypto.scryptSync(password, salt, 64).toString('hex'); const confirmToken = genToken(24); const confirmLink = `${APP_BASE_URL}/api/auth/confirm?token=${confirmToken}`; if (useSupabase) { const exists = supabaseClientAvailable ? (await supabase.from('users').select('id').eq('email', email).limit(1).maybeSingle()) : { data: await sbFindOne('users', { email }) }; if (exists.error) return sendJson(res, 500, { error: exists.error.message }); if (exists.data) return sendJson(res, 409, { error: 'email já cadastrado' }); if (supabaseClientAvailable) { const ins = await supabase.from('users').insert({ email, role: 'user', salt, password_hash: hash, verified: false, confirm_token: confirmToken, created_at: new Date().toISOString() }).select('id').maybeSingle(); if (ins.error) return sendJson(res, 500, { error: ins.error.message }) } else { await sbInsert('users', { email, role: 'user', salt, password_hash: hash, verified: false, confirm_token: confirmToken, created_at: new Date().toISOString() }) } const mail = await sendConfirmationEmail(email, confirmLink); return sendJson(res, 200, { ok: true, confirmLink: mail.sent ? undefined : confirmLink, hint: mail.sent ? undefined : 'E-mail não enviado; use o link' }) } if (useMongo) { if (!mongoReady) return sendJson(res, 503, { error: 'mongo indisponível' }); const exists = await mongo.users.findOne({ email }); if (exists) return sendJson(res, 409, { error: 'email já cadastrado' }); await mongo.users.insertOne({ email, role: 'user', salt, passwordHash: hash, verified: false, confirmToken, createdAt: new Date() }); const mail = await sendConfirmationEmail(email, confirmLink); return sendJson(res, 200, { ok: true, confirmLink: mail.sent ? undefined : confirmLink, hint: mail.sent ? undefined : 'E-mail não enviado; use o link' }) } const data = readData(); data.users = Array.isArray(data.users) ? data.users : []; const exists = data.users.find(u => (u.email||'').toLowerCase() === email); if (exists) return sendJson(res, 409, { error: 'email já cadastrado' }); const id = Date.now(); data.users.push({ id, email, role: 'user', salt, passwordHash: hash, verified: false, confirmToken, createdAt: Date.now() }); writeData(data); const mail = await sendConfirmationEmail(email, confirmLink); return sendJson(res, 200, { ok: true, confirmLink: mail.sent ? undefined : confirmLink, hint: mail.sent ? undefined : 'E-mail não enviado; use o link' }) } catch(e){ return sendJson(res, 500, { error: e.message }) } }); return }
+  if (parsed.pathname === '/api/auth/confirm' && req.method === 'GET') { const token = (parsed.query && parsed.query.token) || null; if (!token) return sendJson(res, 400, { error: 'token obrigatório' }); if (useSupabase) { if (supabaseClientAvailable) { return supabase.from('users').select('id').eq('confirm_token', token).limit(1).maybeSingle().then(({ data: u, error }) => { if (error) return sendJson(res, 500, { error: error.message }); if (!u) return sendJson(res, 404, { error: 'token inválido' }); return supabase.from('users').update({ verified: true, confirm_token: null }).eq('id', u.id).then(() => sendJson(res, 200, { ok: true })).catch(e => sendJson(res, 500, { error: e.message })) }).catch(e => sendJson(res, 500, { error: e.message })) } else { return sbFindOne('users', { confirm_token: token }).then(u => { if (!u) return sendJson(res, 404, { error: 'token inválido' }); return sbUpdate('users', { id: u.id }, { verified: true, confirm_token: null }).then(() => sendJson(res, 200, { ok: true })).catch(e => sendJson(res, 500, { error: e.message })) }).catch(e => sendJson(res, 500, { error: e.message })) } } if (useMongo) { if (!mongoReady) return sendJson(res, 503, { error: 'mongo indisponível' }); return mongo.users.findOne({ confirmToken: token }).then(async u => { if (!u) return sendJson(res, 404, { error: 'token inválido' }); await mongo.users.updateOne({ _id: u._id }, { $set: { verified: true }, $unset: { confirmToken: '' } }); return sendJson(res, 200, { ok: true }) }).catch(e => sendJson(res, 500, { error: e.message })) } const data = readData(); const idx = (data.users||[]).findIndex(u => u.confirmToken === token); if (idx < 0) return sendJson(res, 404, { error: 'token inválido' }); data.users[idx].verified = true; data.users[idx].confirmToken = null; writeData(data); return sendJson(res, 200, { ok: true }) }
+  if (parsed.pathname === '/api/auth/login' && req.method === 'POST') { let body=''; req.on('data', c=> body+=c); req.on('end', async () => { try{ const p = JSON.parse(body||'{}'); if (useSupabase) { const user = supabaseClientAvailable ? (await supabase.from('users').select('*').eq('email', (p.email||'').toLowerCase()).limit(1).maybeSingle()).data : (await sbFindOne('users', { email: (p.email||'').toLowerCase() })); if (!user) return sendJson(res, 401, { error: 'credenciais inválidas' }); const derived = crypto.scryptSync(p.password||'', user.salt, 64).toString('hex'); if (derived !== (user.password_hash||user.passwordHash)) return sendJson(res, 401, { error: 'credenciais inválidas' }); if (!user.verified) return sendJson(res, 403, { error: 'confirme seu email' }); const token = createSession(user.id); return sendJson(res, 200, { token, role: user.role, email: user.email }) } if (useMongo) { if (!mongoReady) return sendJson(res, 503, { error: 'mongo indisponível' }); const user = await mongo.users.findOne({ email: (p.email||'').toLowerCase() }); if (!user) return sendJson(res, 401, { error: 'credenciais inválidas' }); const derived = crypto.scryptSync(p.password||'', user.salt, 64).toString('hex'); if (derived !== user.passwordHash) return sendJson(res, 401, { error: 'credenciais inválidas' }); if (!user.verified) return sendJson(res, 403, { error: 'confirme seu email' }); const token = createSession(user._id); return sendJson(res, 200, { token, role: user.role, email: user.email }) } const data = readData(); const user = (data.users||[]).find(u => (u.email||'').toLowerCase() === (p.email||'').toLowerCase()); if (!user) return sendJson(res, 401, { error: 'credenciais inválidas' }); const derived = crypto.scryptSync(p.password||'', user.salt, 64).toString('hex'); if (derived !== user.passwordHash) return sendJson(res, 401, { error: 'credenciais inválidas' }); if (!user.verified) return sendJson(res, 403, { error: 'confirme seu email' }); const token = createSession(user.id); return sendJson(res, 200, { token, role: user.role, email: user.email }) } catch(e){ return sendJson(res, 500, { error: e.message }) } }); return }
   if (parsed.pathname === '/api/auth/me' && req.method === 'GET') { const user = getAuthUser(req); if (!user) return sendJson(res, 401, { error: 'não autorizado' }); return sendJson(res, 200, { email: user.email, role: user.role }) }
   if (parsed.pathname === '/api/debug/state' && req.method === 'GET') { const user = requireAuth(req, res, 'admin'); if (!user) return; const data = readData(); return sendJson(res, 200, { users: (data.users||[]).length, sessions: (data.sessions||[]).length, clients: (data.clients||[]).length, budgets: (data.budgets||[]).length, materialBudgets: (data.materialBudgets||[]).length }) }
   if (parsed.pathname === '/api/clients' && req.method === 'GET') { const user = requireAuth(req, res); if (!user) return; if (useSupabase) { return supabase.from('clients').select('*').order('nome', { ascending: true }).then(({ data, error }) => { if (error) return sendJson(res, 500, { error: error.message }); return sendJson(res, 200, data||[]) }) } if (useMongo) { if (!mongoReady) return sendJson(res, 503, { error: 'mongo indisponível' }); return mongo.clients.find({}).sort({ nome: 1 }).toArray().then(rows => sendJson(res, 200, rows)).catch(e => sendJson(res, 500, { error: e.message })) } const data = readData(); const list = data.clients.slice().sort((a,b)=> (a.nome||'').localeCompare(b.nome||'')); return sendJson(res, 200, list) }
