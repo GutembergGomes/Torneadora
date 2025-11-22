@@ -97,6 +97,33 @@
                     </div>
                     <button type="submit" class="w-full bg-primary text-white py-3 rounded-lg hover:bg-opacity-90 transition-colors font-medium">Entrar</button>
                 </form>
+                <div class="mt-4 text-sm text-center">
+                    <span>Não tem conta?</span>
+                    <button id="btn-open-register" class="ml-2 text-primary underline">Criar conta</button>
+                </div>
+                <div id="register-box" class="space-y-4 mt-4 hidden">
+                    <div>
+                        <label class="block text-sm font-medium mb-2">E-mail</label>
+                        <input type="email" id="register-email" class="w-full p-3 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium mb-2">Senha</label>
+                        <input type="password" id="register-password" class="w-full p-3 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium mb-2">Confirmar Senha</label>
+                        <input type="password" id="register-password2" class="w-full p-3 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600">
+                    </div>
+                    <button id="btn-register" class="w-full bg-green-600 text-white py-3 rounded-lg hover:bg-green-700 transition-colors font-medium">Criar conta</button>
+                    <div class="text-xs text-gray-500 dark:text-gray-400 text-center">Você receberá um e-mail de confirmação.</div>
+                </div>
+                <div id="confirm-box" class="space-y-4 mt-4 hidden">
+                    <div>
+                        <label class="block text-sm font-medium mb-2">Código de confirmação</label>
+                        <input type="text" id="confirm-token" class="w-full p-3 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600" placeholder="Cole o código recebido no e-mail">
+                    </div>
+                    <button id="btn-confirm" class="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition-colors font-medium">Confirmar e-mail</button>
+                </div>
             </div>
         </div>
     </div>
@@ -1027,6 +1054,20 @@
             const loginForm = document.getElementById('login-form');
             if (loginForm) {
                 loginForm.addEventListener('submit', async function(e){ e.preventDefault(); try{ const email = document.getElementById('login-email').value; const password = document.getElementById('login-password').value; const resp = await fetch(API_BASE + '/api/auth/login', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ email, password }) }); if (!resp.ok) { showAlert('Credenciais inválidas.'); return; } const data = await resp.json(); authToken = data.token; userRole = data.role; localStorage.setItem('auth_token', authToken); localStorage.setItem('user_role', userRole); hideLogin(); aplicarPermissoes(userRole); await carregarDoServidor(); atualizarNumeroOrcamento(); showTab('dashboard'); } catch(err){ showAlert('Erro ao autenticar.'); } });
+            }
+            const btnOpenRegister = document.getElementById('btn-open-register');
+            const registerBox = document.getElementById('register-box');
+            const confirmBox = document.getElementById('confirm-box');
+            if (btnOpenRegister) {
+                btnOpenRegister.addEventListener('click', function(){ document.getElementById('login-form').classList.add('hidden'); registerBox.classList.remove('hidden'); });
+            }
+            const btnRegister = document.getElementById('btn-register');
+            if (btnRegister) {
+                btnRegister.addEventListener('click', async function(){ try{ const email = document.getElementById('register-email').value.trim(); const p1 = document.getElementById('register-password').value; const p2 = document.getElementById('register-password2').value; if (!email || !p1 || p1.length < 6 || p1 !== p2) { showAlert('Preencha corretamente o e-mail e senha.'); return; } const resp = await fetch(API_BASE + '/api/auth/register', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ email, password: p1 }) }); if (!resp.ok) { const err = await resp.json().catch(()=>({error:'erro'})); showAlert(err.error || 'Erro ao registrar.'); return; } showAlert('Conta criada. Verifique seu e-mail para confirmar.'); confirmBox.classList.remove('hidden'); } catch(e){ showAlert('Erro ao registrar.'); } });
+            }
+            const btnConfirm = document.getElementById('btn-confirm');
+            if (btnConfirm) {
+                btnConfirm.addEventListener('click', async function(){ try{ const token = (document.getElementById('confirm-token').value||'').trim(); if (!token) { showAlert('Informe o código.'); return; } const resp = await fetch(API_BASE + '/api/auth/confirm?token=' + encodeURIComponent(token)); if (!resp.ok) { const err = await resp.json().catch(()=>({error:'erro'})); showAlert(err.error || 'Erro ao confirmar.'); return; } showAlert('E-mail confirmado. Faça login.'); registerBox.classList.add('hidden'); confirmBox.classList.add('hidden'); document.getElementById('login-form').classList.remove('hidden'); } catch(e){ showAlert('Erro ao confirmar.'); } });
             }
             if (authToken) {
                 try{ const me = await fetch(API_BASE + '/api/auth/me', { headers: { 'Authorization': 'Bearer ' + authToken } }); if (me.ok) { const info = await me.json(); userRole = info.role; localStorage.setItem('user_role', userRole); hideLogin(); aplicarPermissoes(userRole); } else { showLogin(); } } catch(err){ showLogin(); }
