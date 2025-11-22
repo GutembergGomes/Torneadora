@@ -1,0 +1,17 @@
+# Node
+node_modules/
+npm-debug.log*
+
+# Local data storage (do not commit credentials/sessions)
+data.json
+
+# Environment
+.env
+
+# Editor/IDE
+.vscode/
+.trae/
+
+# OS
+.DS_Store
+Thumbs.db

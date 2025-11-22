@@ -1,0 +1,3074 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema Profissional de Tornearia</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#5D5CDE',
+                        success: '#10B981',
+                        warning: '#F59E0B',
+                        danger: '#EF4444',
+                    },
+                    animation: {
+                        'fade-in': 'fadeIn 0.3s ease-in-out',
+                        'slide-up': 'slideUp 0.3s ease-out',
+                        'pulse-slow': 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        @keyframes slideUp {
+            from { transform: translateY(10px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        @keyframes fadeOut {
+            from { opacity: 1; }
+            to { opacity: 0; }
+        }
+        .animate-fade-in { animation: fadeIn 0.3s ease-in-out; }
+        .animate-slide-up { animation: slideUp 0.3s ease-out; }
+        .animate-fade-out { animation: fadeOut 0.3s ease-out; }
+        .drag-handle { cursor: grab; }
+        .drag-handle:active { cursor: grabbing; }
+        .sortable-ghost { opacity: 0.5; }
+        
+        /* Estilização para impressão */
+        @media print {
+            body * {
+                visibility: hidden;
+            }
+            #modal-visualizar, #modal-visualizar * {
+                visibility: visible;
+            }
+            #modal-visualizar {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100%;
+                background: white;
+            }
+        }
+
+        .file-preview {
+            max-width: 200px;
+            max-height: 150px;
+            object-fit: cover;
+            border-radius: 8px;
+            border: 2px solid #e5e7eb;
+        }
+
+        .material-card {
+            transition: all 0.3s ease;
+        }
+        .material-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        }
+    </style>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white min-h-screen">
+    <div id="login-view" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50">
+        <div class="flex items-center justify-center min-h-screen p-4">
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-md w-full animate-slide-up p-6">
+                <h2 class="text-2xl font-bold mb-4 flex items-center"><i class="fas fa-lock mr-3 text-primary"></i>Acesso ao Sistema</h2>
+                <form id="login-form" class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium mb-2">E-mail</label>
+                        <input type="email" id="login-email" class="w-full p-3 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600" required>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium mb-2">Senha</label>
+                        <input type="password" id="login-password" class="w-full p-3 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600" required>
+                    </div>
+                    <button type="submit" class="w-full bg-primary text-white py-3 rounded-lg hover:bg-opacity-90 transition-colors font-medium">Entrar</button>
+                </form>
+            </div>
+        </div>
+    </div>
+    <div class="container mx-auto p-4 max-w-7xl">
+        <!-- Header Melhorado -->
+        <header class="mb-8">
+            <div class="bg-gradient-to-r from-primary to-blue-600 rounded-2xl p-6 text-white shadow-xl">
+                <div class="flex flex-col md:flex-row md:items-center md:justify-between">
+                    <div>
+                        <h1 class="text-4xl font-bold mb-2">
+                            <i class="fas fa-cog mr-3"></i>
+                            Sistema Profissional de Tornearia
+                        </h1>
+                        <p class="text-blue-100 text-lg">Gestão Completa de Orçamentos e Usinagem</p>
+                    </div>
+                    <div class="mt-4 md:mt-0 text-right">
+                        <div id="orcamento-counter" class="text-2xl font-bold">0</div>
+                        <div class="text-blue-200 text-sm">Orçamentos Criados</div>
+                        <button id="btn-logout" class="mt-2 px-3 py-1 text-sm bg-red-500 text-white rounded hidden">Sair</button>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Navigation Tabs Melhorada -->
+        <nav class="mb-6">
+            <div class="flex flex-wrap gap-2 bg-white dark:bg-gray-800 rounded-xl p-2 shadow-lg">
+                <button onclick="showTab('dashboard')" id="tab-dashboard" class="flex-1 min-w-fit py-3 px-4 rounded-lg text-sm font-medium transition-all duration-200 bg-primary text-white shadow-md">
+                    <i class="fas fa-chart-pie mr-2"></i>Dashboard
+                </button>
+                <button onclick="showTab('novo')" id="tab-novo" class="flex-1 min-w-fit py-3 px-4 rounded-lg text-sm font-medium transition-all duration-200 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700">
+                    <i class="fas fa-plus mr-2"></i>Novo Orçamento
+                </button>
+                <button onclick="showTab('lista')" id="tab-lista" class="flex-1 min-w-fit py-3 px-4 rounded-lg text-sm font-medium transition-all duration-200 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700">
+                    <i class="fas fa-list mr-2"></i>Orçamentos
+                </button>
+                <button onclick="showTab('materia-prima')" id="tab-materia-prima" class="flex-1 min-w-fit py-3 px-4 rounded-lg text-sm font-medium transition-all duration-200 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700">
+                    <i class="fas fa-cubes mr-2"></i>Matéria-Prima
+                </button>
+                <button onclick="showTab('clientes')" id="tab-clientes" class="flex-1 min-w-fit py-3 px-4 rounded-lg text-sm font-medium transition-all duration-200 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700">
+                    <i class="fas fa-users mr-2"></i>Clientes
+                </button>
+                <button onclick="showTab('templates')" id="tab-templates" class="flex-1 min-w-fit py-3 px-4 rounded-lg text-sm font-medium transition-all duration-200 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700">
+                    <i class="fas fa-templates mr-2"></i>Templates
+                </button>
+                <button onclick="showTab('configuracoes')" id="tab-configuracoes" class="flex-1 min-w-fit py-3 px-4 rounded-lg text-sm font-medium transition-all duration-200 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700">
+                    <i class="fas fa-cog mr-2"></i>Configurações
+                </button>
+            </div>
+        </nav>
+
+        <!-- Dashboard Tab -->
+        <div id="content-dashboard" class="tab-content animate-fade-in">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                <!-- Cards de Estatísticas -->
+                <div class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-lg border border-gray-200 dark:border-gray-700">
+                    <div class="flex items-center">
+                        <div class="p-3 bg-blue-100 dark:bg-blue-900 rounded-lg">
+                            <i class="fas fa-file-invoice text-blue-600 text-xl"></i>
+                        </div>
+                        <div class="ml-4">
+                            <p class="text-gray-600 dark:text-gray-400 text-sm">Total de Orçamentos</p>
+                            <p id="total-orcamentos" class="text-2xl font-bold">0</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-lg border border-gray-200 dark:border-gray-700">
+                    <div class="flex items-center">
+                        <div class="p-3 bg-green-100 dark:bg-green-900 rounded-lg">
+                            <i class="fas fa-check-circle text-green-600 text-xl"></i>
+                        </div>
+                        <div class="ml-4">
+                            <p class="text-gray-600 dark:text-gray-400 text-sm">Realizados</p>
+                            <p id="total-realizados" class="text-2xl font-bold text-green-600">0</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-lg border border-gray-200 dark:border-gray-700">
+                    <div class="flex items-center">
+                        <div class="p-3 bg-yellow-100 dark:bg-yellow-900 rounded-lg">
+                            <i class="fas fa-clock text-yellow-600 text-xl"></i>
+                        </div>
+                        <div class="ml-4">
+                            <p class="text-gray-600 dark:text-gray-400 text-sm">Pendentes</p>
+                            <p id="total-pendentes" class="text-2xl font-bold text-yellow-600">0</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-lg border border-gray-200 dark:border-gray-700">
+                    <div class="flex items-center">
+                        <div class="p-3 bg-purple-100 dark:bg-purple-900 rounded-lg">
+                            <i class="fas fa-dollar-sign text-purple-600 text-xl"></i>
+                        </div>
+                        <div class="ml-4">
+                            <p class="text-gray-600 dark:text-gray-400 text-sm">Valor Total</p>
+                            <p id="valor-total" class="text-2xl font-bold text-purple-600">R$ 0,00</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Gráficos e Resumos -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-lg">
+                    <h3 class="text-xl font-semibold mb-4">Orçamentos Recentes</h3>
+                    <div id="orcamentos-recentes" class="space-y-3">
+                        <!-- Será preenchido dinamicamente -->
+                    </div>
+                </div>
+
+                <div class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-lg">
+                    <h3 class="text-xl font-semibold mb-4">Clientes Frequentes</h3>
+                    <div id="clientes-frequentes" class="space-y-3">
+                        <!-- Será preenchido dinamicamente -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Novo Orçamento Tab Melhorado -->
+        <div id="content-novo" class="tab-content hidden">
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+                <!-- Header do Formulário -->
+                <div class="p-6 border-b border-gray-200 dark:border-gray-700">
+                    <div class="flex justify-between items-center">
+                        <div>
+                            <h2 class="text-2xl font-bold flex items-center">
+                                <i class="fas fa-file-invoice mr-3 text-primary"></i>
+                                Novo Orçamento
+                            </h2>
+                            <p class="text-gray-600 dark:text-gray-400 mt-1">Orçamento #<span id="numero-orcamento">001</span></p>
+                        </div>
+                        <button id="btn-salvar-template" onclick="salvarTemplate()" class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors">
+                            <i class="fas fa-save mr-2"></i>Salvar como Template
+                        </button>
+                    </div>
+                </div>
+
+                <div class="p-6">
+                    <form id="orcamento-form" class="space-y-6">
+                        <!-- Seleção de Cliente Existente -->
+                        <div class="grid md:grid-cols-2 gap-6">
+                            <div>
+                                <label class="block text-sm font-medium mb-2">
+                                    Cliente Existente 
+                                    <i class="fas fa-info-circle text-blue-500 cursor-help ml-1" title="Selecione um cliente já cadastrado"></i>
+                                </label>
+                                <select id="cliente-existente" onchange="preencherDadosCliente()" class="w-full p-3 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-base">
+                                    <option value="">Selecione um cliente ou cadastre novo</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium mb-2">Prazo de Entrega</label>
+                                <input type="date" id="prazo-entrega" class="w-full p-3 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-base">
+                            </div>
+                        </div>
+
+                        <!-- Dados do Cliente -->
+                        <div class="border rounded-lg p-4 bg-gray-50 dark:bg-gray-700">
+                            <h3 class="font-semibold mb-4 text-lg">Dados do Cliente</h3>
+                            <div class="grid md:grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-sm font-medium mb-2">Nome do Proprietário *</label>
+                                    <input type="text" id="nome-proprietario" required class="w-full p-3 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-base">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium mb-2">Empresa</label>
+                                    <input type="text" id="empresa" class="w-full p-3 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-base">
+                                </div>
+                            </div>
+
+                            <div class="grid md:grid-cols-2 gap-4 mt-4">
+                                <div>
+                                    <label class="block text-sm font-medium mb-2">Telefone</label>
+                                    <input type="tel" id="telefone" class="w-full p-3 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-base">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium mb-2">E-mail</label>
+                                    <input type="email" id="email" class="w-full p-3 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-base">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Dados da Peça/Material -->
+                        <div class="border rounded-lg p-4 bg-gray-50 dark:bg-gray-700">
+                            <h3 class="font-semibold mb-4 text-lg">Dados da Peça/Material</h3>
+                            <div class="grid md:grid-cols-3 gap-4">
+                                <div>
+                                    <label class="block text-sm font-medium mb-2">Material/Liga</label>
+                                    <input type="text" id="material" placeholder="Ex: Aço 1020, Alumínio 6061" class="w-full p-3 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-base">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium mb-2">Dimensões</label>
+                                    <input type="text" id="dimensoes" placeholder="Ex: Ø50 x 100mm" class="w-full p-3 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-base">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium mb-2">Desenho/Código</label>
+                                    <input type="text" id="codigo" placeholder="Ex: DES-001, Peça ABC" class="w-full p-3 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-base">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Serviços com Melhores Controles -->
+                        <div class="border rounded-lg p-4 bg-gray-50 dark:bg-gray-700">
+                            <div class="flex justify-between items-center mb-4">
+                                <h3 class="font-semibold text-lg">Serviços de Usinagem</h3>
+                                <div class="flex gap-2">
+                                    <button type="button" onclick="carregarTemplate()" class="bg-blue-500 text-white px-3 py-2 rounded-lg text-sm hover:bg-blue-600 transition-colors">
+                                        <i class="fas fa-template mr-1"></i>Template
+                                    </button>
+                                    <button type="button" onclick="adicionarServico()" class="bg-primary text-white px-3 py-2 rounded-lg text-sm hover:bg-opacity-90 transition-colors">
+                                        <i class="fas fa-plus mr-1"></i>Adicionar
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div id="servicos-container" class="space-y-3">
+                                <div class="servico-item bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-600">
+                                    <div class="flex items-start gap-3">
+                                        <div class="drag-handle text-gray-400 mt-3 cursor-grab">
+                                            <i class="fas fa-grip-vertical"></i>
+                                        </div>
+                                        <div class="flex-1 grid md:grid-cols-4 gap-3">
+                                            <div class="md:col-span-2">
+                                                <label class="block text-sm font-medium mb-1">Descrição do Serviço</label>
+                                                <input type="text" placeholder="Ex: Torneamento externo, Furação" class="servico-desc w-full p-2 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-base">
+                                            </div>
+                                            <div>
+                                                <label class="block text-sm font-medium mb-1">Quantidade</label>
+                                                <input type="number" placeholder="1" class="servico-qty w-full p-2 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-base" min="1" value="1" onchange="calcularTotal()">
+                                            </div>
+                                            <div class="flex gap-2">
+                                                <div class="flex-1">
+                                                    <label class="block text-sm font-medium mb-1">Valor Unitário</label>
+                                                    <input type="number" placeholder="0.00" class="servico-valor w-full p-2 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-base" step="0.01" onchange="calcularTotal()">
+                                                </div>
+                                                <div class="pt-6">
+                                                    <button type="button" onclick="removerServico(this)" class="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900 rounded transition-colors" title="Remover serviço">
+                                                        <i class="fas fa-trash"></i>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="mt-2 text-right">
+                                        <span class="text-sm text-gray-600 dark:text-gray-400">Subtotal: </span>
+                                        <span class="servico-subtotal font-semibold text-primary">R$ 0,00</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Total Geral -->
+                            <div class="mt-6 pt-4 border-t border-gray-200 dark:border-gray-600">
+                                <div class="flex justify-between items-center text-xl">
+                                    <span class="font-semibold">Total Geral:</span>
+                                    <span id="total-geral" class="font-bold text-primary">R$ 0,00</span>
+                                </div>
+                                <div class="mt-2 grid grid-cols-2 gap-4 text-sm">
+                                    <div>
+                                        <label class="block font-medium mb-1">Desconto (%)</label>
+                                        <input type="number" id="desconto" placeholder="0" min="0" max="100" step="0.1" class="w-full p-2 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-base" onchange="calcularTotal()">
+                                    </div>
+                                    <div>
+                                        <label class="block font-medium mb-1">Valor Final</label>
+                                        <div id="valor-final" class="p-2 bg-green-50 dark:bg-green-900 border border-green-200 dark:border-green-700 rounded-lg font-bold text-green-700 dark:text-green-300">R$ 0,00</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Observações -->
+                        <div>
+                            <label class="block text-sm font-medium mb-2">Observações e Condições</label>
+                            <textarea id="observacoes" rows="4" placeholder="Condições de pagamento, especificações técnicas, observações gerais..." class="w-full p-3 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-base"></textarea>
+                        </div>
+
+                        <!-- Botões -->
+                        <div class="flex gap-3 pt-4">
+                            <button type="submit" class="flex-1 bg-primary text-white py-3 px-6 rounded-lg hover:bg-opacity-90 transition-colors font-medium shadow-lg">
+                                <i class="fas fa-save mr-2"></i>Salvar Orçamento
+                            </button>
+                            <button type="button" onclick="previewOrcamento()" class="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors">
+                                <i class="fas fa-eye mr-2"></i>Visualizar
+                            </button>
+                            <button type="button" onclick="limparFormulario()" class="px-6 py-3 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                                <i class="fas fa-broom mr-2"></i>Limpar
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Lista de Orçamentos Melhorada -->
+        <div id="content-lista" class="tab-content hidden">
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+                <!-- Header da Lista -->
+                <div class="p-6 border-b border-gray-200 dark:border-gray-700">
+                    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                        <div>
+                            <h2 class="text-2xl font-bold flex items-center">
+                                <i class="fas fa-list mr-3 text-primary"></i>
+                                Orçamentos Salvos
+                            </h2>
+                            <p class="text-gray-600 dark:text-gray-400 mt-1">Gerencie todos os seus orçamentos</p>
+                        </div>
+
+                        <!-- Filtros e Busca -->
+                        <div class="flex flex-col md:flex-row gap-3">
+                            <div class="relative">
+                                <input type="text" id="busca-orcamentos" placeholder="Buscar por cliente, empresa..." class="pl-10 pr-4 py-2 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-base">
+                                <i class="fas fa-search absolute left-3 top-3 text-gray-400"></i>
+                            </div>
+                            <select id="filtro-status" class="px-4 py-2 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600">
+                                <option value="">Todos os status</option>
+                                <option value="pendente">Pendentes</option>
+                                <option value="realizado">Realizados</option>
+                            </select>
+                            <button onclick="exportarDados()" class="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors">
+                                <i class="fas fa-download mr-2"></i>Exportar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="p-6">
+                    <div id="orcamentos-lista" class="space-y-4">
+                        <!-- Os orçamentos serão inseridos aqui dinamicamente -->
+                    </div>
+                    
+                    <div id="lista-vazia" class="text-center py-16 text-gray-500 dark:text-gray-400">
+                        <i class="fas fa-file-invoice fa-4x mb-6 opacity-50"></i>
+                        <h3 class="text-xl font-semibold mb-2">Nenhum orçamento encontrado</h3>
+                        <p class="mb-6">Comece criando seu primeiro orçamento</p>
+                        <button onclick="showTab('novo')" class="px-6 py-3 bg-primary text-white rounded-lg hover:bg-opacity-90 transition-colors">
+                            <i class="fas fa-plus mr-2"></i>Criar Primeiro Orçamento
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Nova Tab de Matéria-Prima -->
+        <div id="content-materia-prima" class="tab-content hidden">
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+                <!-- Header da Matéria-Prima -->
+                <div class="p-6 border-b border-gray-200 dark:border-gray-700">
+                    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                        <div>
+                            <h2 class="text-2xl font-bold flex items-center">
+                                <i class="fas fa-cubes mr-3 text-primary"></i>
+                                Orçamentos de Matéria-Prima
+                            </h2>
+                            <p class="text-gray-600 dark:text-gray-400 mt-1">Compare preços e condições dos fornecedores</p>
+                        </div>
+
+                        <!-- Filtros e Busca -->
+                        <div class="flex flex-col md:flex-row gap-3">
+                            <div class="relative">
+                                <input type="text" id="busca-materia-prima" placeholder="Buscar por material, fornecedor..." class="pl-10 pr-4 py-2 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-base">
+                                <i class="fas fa-search absolute left-3 top-3 text-gray-400"></i>
+                            </div>
+                            <select id="filtro-material" class="px-4 py-2 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600">
+                                <option value="">Todos os materiais</option>
+                                <option value="aço">Aço</option>
+                                <option value="aluminio">Alumínio</option>
+                                <option value="inox">Aço Inox</option>
+                                <option value="bronze">Bronze</option>
+                                <option value="latão">Latão</option>
+                                <option value="cobre">Cobre</option>
+                            </select>
+                            <button onclick="novoOrcamentoMateriaPrima()" class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-opacity-90 transition-colors">
+                                <i class="fas fa-plus mr-2"></i>Novo Orçamento
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="p-6">
+                    <!-- Cards de Fornecedores em Destaque -->
+                    <div class="mb-8">
+                        <h3 class="text-xl font-semibold mb-4 flex items-center">
+                            <i class="fas fa-star text-yellow-500 mr-2"></i>
+                            Fornecedores em Destaque
+                        </h3>
+                        <div id="fornecedores-destaque" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            <!-- Será preenchido dinamicamente -->
+                        </div>
+                    </div>
+
+                    <!-- Lista de Orçamentos de Matéria-Prima -->
+                    <div>
+                        <h3 class="text-xl font-semibold mb-4">Todos os Orçamentos</h3>
+                        <div id="lista-materia-prima" class="space-y-4">
+                            <!-- Será preenchido dinamicamente -->
+                        </div>
+                        
+                        <div id="lista-materia-prima-vazia" class="text-center py-16 text-gray-500 dark:text-gray-400">
+                            <i class="fas fa-cubes fa-4x mb-6 opacity-50"></i>
+                            <h3 class="text-xl font-semibold mb-2">Nenhum orçamento de matéria-prima</h3>
+                            <p class="mb-6">Comece criando seu primeiro orçamento de matéria-prima</p>
+                            <button onclick="novoOrcamentoMateriaPrima()" class="px-6 py-3 bg-primary text-white rounded-lg hover:bg-opacity-90 transition-colors">
+                                <i class="fas fa-plus mr-2"></i>Criar Primeiro Orçamento
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Nova Tab de Clientes -->
+        <div id="content-clientes" class="tab-content hidden">
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-6">
+                <h2 class="text-2xl font-bold mb-6 flex items-center">
+                    <i class="fas fa-users mr-3 text-primary"></i>
+                    Gestão de Clientes
+                </h2>
+                
+                <div id="lista-clientes" class="space-y-4">
+                    <!-- Lista de clientes será preenchida dinamicamente -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Nova Tab de Templates -->
+        <div id="content-templates" class="tab-content hidden">
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-6">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-2xl font-bold flex items-center">
+                        <i class="fas fa-templates mr-3 text-primary"></i>
+                        Templates de Serviços
+                    </h2>
+                    <button onclick="criarNovoTemplate()" class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-opacity-90 transition-colors">
+                        <i class="fas fa-plus mr-2"></i>Novo Template
+                    </button>
+                </div>
+                
+                <div id="lista-templates" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <!-- Templates serão preenchidos dinamicamente -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Nova Tab de Configurações -->
+        <div id="content-configuracoes" class="tab-content hidden">
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-6">
+                <h2 class="text-2xl font-bold mb-6 flex items-center">
+                    <i class="fas fa-cog mr-3 text-primary"></i>
+                    Configurações do Sistema
+                </h2>
+                
+                <div class="space-y-6">
+                    <div class="border rounded-lg p-4 bg-gray-50 dark:bg-gray-700">
+                        <h3 class="font-semibold text-lg mb-4">Backup e Restauração</h3>
+                        <div class="grid md:grid-cols-2 gap-4">
+                            <button onclick="exportarDados()" class="p-4 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors">
+                                <i class="fas fa-download mr-2"></i>Exportar Dados
+                            </button>
+                            <div>
+                                <label class="block text-sm font-medium mb-2">Importar Dados</label>
+                                <input type="file" id="importar-dados" accept=".json" class="w-full p-2 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-base">
+                                <button onclick="importarDados()" class="mt-2 w-full p-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors">
+                                    <i class="fas fa-upload mr-2"></i>Importar
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="border rounded-lg p-4 bg-gray-50 dark:bg-gray-700">
+                        <h3 class="font-semibold text-lg mb-4">Aparência</h3>
+                        <div class="flex gap-4">
+                            <button onclick="toggleDarkMode()" class="p-3 bg-gray-200 dark:bg-gray-600 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-500 transition-colors">
+                                <i class="fas fa-moon mr-2"></i>Alternar Modo Escuro
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="border rounded-lg p-4 bg-gray-50 dark:bg-gray-700">
+                        <h3 class="font-semibold text-lg mb-4">Limpeza de Dados</h3>
+                        <div class="grid md:grid-cols-2 gap-4">
+                            <button onclick="limparTodosDados()" class="p-4 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors">
+                                <i class="fas fa-trash mr-2"></i>Limpar Todos os Dados
+                            </button>
+                            <div class="text-sm text-gray-600 dark:text-gray-400">
+                                <p><strong>Atenção:</strong> Esta ação não pode ser desfeita. Faça backup antes de prosseguir.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Visualização Melhorado -->
+    <div id="modal-visualizar" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 animate-fade-in">
+        <div class="flex items-center justify-center min-h-screen p-4">
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-5xl w-full max-h-screen overflow-y-auto animate-slide-up">
+                <div class="p-6">
+                    <div class="flex justify-between items-center mb-6">
+                        <h3 class="text-2xl font-bold">Visualizar Orçamento</h3>
+                        <button onclick="fecharModal()" class="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 p-2">
+                            <i class="fas fa-times fa-xl"></i>
+                        </button>
+                    </div>
+                    <div id="modal-conteudo" class="space-y-6">
+                        <!-- Conteúdo do orçamento será inserido aqui -->
+                    </div>
+                    <div class="flex gap-3 mt-8 pt-6 border-t">
+                        <button onclick="imprimirOrcamento()" class="flex-1 bg-primary text-white py-3 px-6 rounded-lg hover:bg-opacity-90 transition-colors font-medium">
+                            <i class="fas fa-print mr-2"></i>Imprimir PDF
+                        </button>
+                        <button onclick="compartilharOrcamento()" class="flex-1 bg-green-600 text-white py-3 px-6 rounded-lg hover:bg-green-700 transition-colors font-medium">
+                            <i class="fas fa-share mr-2"></i>Compartilhar
+                        </button>
+                        <button onclick="duplicarOrcamentoAtual()" class="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors">
+                            <i class="fas fa-copy mr-2"></i>Duplicar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para Templates -->
+    <div id="modal-template" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50">
+        <div class="flex items-center justify-center min-h-screen p-4">
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-md w-full">
+                <div class="p-6">
+                    <h3 class="text-xl font-semibold mb-4">Salvar Template</h3>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium mb-2">Nome do Template</label>
+                            <input type="text" id="nome-template" class="w-full p-3 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium mb-2">Descrição</label>
+                            <textarea id="descricao-template" rows="3" class="w-full p-3 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600"></textarea>
+                        </div>
+                    </div>
+                    <div class="flex gap-3 mt-6">
+                        <button onclick="confirmarSalvarTemplate()" class="flex-1 bg-primary text-white py-2 px-4 rounded-lg hover:bg-opacity-90 transition-colors">
+                            Salvar
+                        </button>
+                        <button onclick="fecharModalTemplate()" class="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                            Cancelar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para Adicionar Nota Fiscal -->
+    <div id="modal-nota-fiscal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50">
+        <div class="flex items-center justify-center min-h-screen p-4">
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-md w-full">
+                <div class="p-6">
+                    <h3 class="text-xl font-semibold mb-4">Adicionar Nota Fiscal</h3>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium mb-2">Número da Nota Fiscal</label>
+                            <input type="text" id="numero-nota-fiscal" class="w-full p-3 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600" placeholder="Ex: 123456">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium mb-2">Data de Emissão</label>
+                            <input type="date" id="data-emissao-nota" class="w-full p-3 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium mb-2">Valor da Nota Fiscal</label>
+                            <input type="number" id="valor-nota-fiscal" step="0.01" class="w-full p-3 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600" placeholder="0.00">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium mb-2">Anexar Nota Fiscal (PDF/Imagem)</label>
+                            <input type="file" id="anexo-nota-fiscal" accept=".pdf,.jpg,.jpeg,.png" class="w-full p-3 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600">
+                            <div id="preview-nota-fiscal" class="mt-2 hidden">
+                                <p class="text-sm text-gray-600 dark:text-gray-400">Pré-visualização:</p>
+                                <img id="preview-imagem" class="file-preview mt-2">
+                                <div id="preview-pdf" class="mt-2 p-2 bg-gray-100 dark:bg-gray-700 rounded-lg hidden">
+                                    <i class="fas fa-file-pdf text-red-500 mr-2"></i>
+                                    <span id="nome-arquivo-pdf" class="text-sm"></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex gap-3 mt-6">
+                        <button onclick="confirmarAdicionarNotaFiscal()" class="flex-1 bg-primary text-white py-2 px-4 rounded-lg hover:bg-opacity-90 transition-colors">
+                            Adicionar Nota
+                        </button>
+                        <button onclick="fecharModalNotaFiscal()" class="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                            Cancelar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para Visualizar Nota Fiscal -->
+    <div id="modal-visualizar-nota" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50">
+        <div class="flex items-center justify-center min-h-screen p-4">
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-4xl w-full max-h-screen overflow-y-auto">
+                <div class="p-6">
+                    <div class="flex justify-between items-center mb-6">
+                        <h3 class="text-2xl font-bold">Nota Fiscal</h3>
+                        <button onclick="fecharModalNotaVisualizacao()" class="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 p-2">
+                            <i class="fas fa-times fa-xl"></i>
+                        </button>
+                    </div>
+                    <div id="conteudo-nota-fiscal" class="space-y-4">
+                        <!-- Conteúdo da nota fiscal será inserido aqui -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para Novo Orçamento de Matéria-Prima -->
+    <div id="modal-materia-prima" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50">
+        <div class="flex items-center justify-center min-h-screen p-4">
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-4xl w-full max-h-screen overflow-y-auto animate-slide-up">
+                <div class="p-6">
+                    <div class="flex justify-between items-center mb-6">
+                        <h3 class="text-2xl font-bold">Novo Orçamento de Matéria-Prima</h3>
+                        <button onclick="fecharModalMateriaPrima()" class="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 p-2">
+                            <i class="fas fa-times fa-xl"></i>
+                        </button>
+                    </div>
+                    
+                    <form id="form-materia-prima" class="space-y-6">
+                        <!-- Informações do Fornecedor -->
+                        <div class="border rounded-lg p-4 bg-gray-50 dark:bg-gray-700">
+                            <h4 class="font-semibold text-lg mb-4 text-primary">INFORMAÇÕES DO FORNECEDOR</h4>
+                            <div class="grid md:grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-sm font-medium mb-2">Nome do Fornecedor *</label>
+                                    <input type="text" id="fornecedor-nome" required class="w-full p-3 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-base">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium mb-2">CNPJ</label>
+                                    <input type="text" id="fornecedor-cnpj" class="w-full p-3 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-base">
+                                </div>
+                            </div>
+                            <div class="grid md:grid-cols-2 gap-4 mt-4">
+                                <div>
+                                    <label class="block text-sm font-medium mb-2">Telefone</label>
+                                    <input type="tel" id="fornecedor-telefone" class="w-full p-3 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-base">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium mb-2">E-mail</label>
+                                    <input type="email" id="fornecedor-email" class="w-full p-3 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-base">
+                                </div>
+                            </div>
+                            <div class="mt-4">
+                                <label class="block text-sm font-medium mb-2">Endereço</label>
+                                <input type="text" id="fornecedor-endereco" class="w-full p-3 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-base">
+                            </div>
+                        </div>
+
+                        <!-- Detalhes do Material -->
+                        <div class="border rounded-lg p-4 bg-gray-50 dark:bg-gray-700">
+                            <h4 class="font-semibold text-lg mb-4 text-primary">DETALHES DO MATERIAL</h4>
+                            <div class="grid md:grid-cols-3 gap-4">
+                                <div>
+                                    <label class="block text-sm font-medium mb-2">Tipo de Material *</label>
+                                    <select id="material-tipo" required class="w-full p-3 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-base">
+                                        <option value="">Selecione o material</option>
+                                        <option value="aço">Aço 1020/1045</option>
+                                        <option value="aço">Aço 4140</option>
+                                        <option value="inox">Aço Inox 304</option>
+                                        <option value="inox">Aço Inox 316</option>
+                                        <option value="aluminio">Alumínio 6061</option>
+                                        <option value="aluminio">Alumínio 7075</option>
+                                        <option value="bronze">Bronze</option>
+                                        <option value="latão">Latão</option>
+                                        <option value="cobre">Cobre</option>
+                                        <option value="outro">Outro</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium mb-2">Formato *</label>
+                                    <select id="material-formato" required class="w-full p-3 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-base">
+                                        <option value="">Selecione o formato</option>
+                                        <option value="barra-redonda">Barra Redonda</option>
+                                        <option value="barra-quadrada">Barra Quadrada</option>
+                                        <option value="barra-hexagonal">Barra Hexagonal</option>
+                                        <option value="chapa">Chapa</option>
+                                        <option value="tubo">Tubo</option>
+                                        <option value="outro">Outro</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium mb-2">Diâmetro/Espessura (mm)</label>
+                                    <input type="text" id="material-diametro" class="w-full p-3 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-base" placeholder="Ex: 50, 25x25">
+                                </div>
+                            </div>
+                            <div class="grid md:grid-cols-3 gap-4 mt-4">
+                                <div>
+                                    <label class="block text-sm font-medium mb-2">Quantidade *</label>
+                                    <input type="number" id="material-quantidade" required class="w-full p-3 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-base" min="1" step="0.1">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium mb-2">Unidade *</label>
+                                    <select id="material-unidade" required class="w-full p-3 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-base">
+                                        <option value="kg">Quilograma (kg)</option>
+                                        <option value="m">Metro (m)</option>
+                                        <option value="un">Unidade</option>
+                                        <option value="barra">Barra</option>
+                                        <option value="chapa">Chapa</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium mb-2">Preço Unitário (R$) *</label>
+                                    <input type="number" id="material-preco-unitario" required class="w-full p-3 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-base" step="0.01" min="0" onchange="calcularTotalMateriaPrima()">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Condições Comerciais -->
+                        <div class="border rounded-lg p-4 bg-gray-50 dark:bg-gray-700">
+                            <h4 class="font-semibold text-lg mb-4 text-primary">CONDIÇÕES COMERCIAIS</h4>
+                            <div class="grid md:grid-cols-3 gap-4">
+                                <div>
+                                    <label class="block text-sm font-medium mb-2">Prazo de Entrega (dias)</label>
+                                    <input type="number" id="prazo-entrega-mp" class="w-full p-3 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-base" min="1">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium mb-2">Condição de Pagamento</label>
+                                    <select id="condicao-pagamento" class="w-full p-3 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-base">
+                                        <option value="a-vista">À Vista</option>
+                                        <option value="7-dias">7 Dias</option>
+                                        <option value="14-dias">14 Dias</option>
+                                        <option value="30-dias">30 Dias</option>
+                                        <option value="30-60-dias">30/60 Dias</option>
+                                        <option value="outro">Outro</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium mb-2">Frete</label>
+                                    <select id="tipo-frete" class="w-full p-3 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-base">
+                                        <option value="cif">CIF (Fornecedor paga)</option>
+                                        <option value="fob">FOB (Cliente paga)</option>
+                                        <option value="incluido">Incluído no Preço</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="mt-4">
+                                <label class="block text-sm font-medium mb-2">Valor do Frete (R$)</label>
+                                <input type="number" id="valor-frete" class="w-full p-3 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-base" step="0.01" min="0" onchange="calcularTotalMateriaPrima()">
+                            </div>
+                        </div>
+
+                        <!-- Total e Observações -->
+                        <div class="border rounded-lg p-4 bg-gray-50 dark:bg-gray-700">
+                            <h4 class="font-semibold text-lg mb-4 text-primary">TOTAL E OBSERVAÇÕES</h4>
+                            <div class="grid md:grid-cols-2 gap-6">
+                                <div>
+                                    <label class="block text-sm font-medium mb-2">Observações</label>
+                                    <textarea id="observacoes-mp" rows="4" class="w-full p-3 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-base" placeholder="Condições especiais, observações sobre qualidade, etc..."></textarea>
+                                </div>
+                                <div class="space-y-4">
+                                    <div class="text-right">
+                                        <p class="text-sm text-gray-600 dark:text-gray-400">Subtotal do Material:</p>
+                                        <p id="subtotal-material" class="text-2xl font-bold text-primary">R$ 0,00</p>
+                                    </div>
+                                    <div class="text-right">
+                                        <p class="text-sm text-gray-600 dark:text-gray-400">Frete:</p>
+                                        <p id="total-frete" class="text-xl font-semibold">R$ 0,00</p>
+                                    </div>
+                                    <div class="text-right pt-4 border-t">
+                                        <p class="text-sm text-gray-600 dark:text-gray-400">TOTAL GERAL:</p>
+                                        <p id="total-geral-mp" class="text-3xl font-bold text-green-600">R$ 0,00</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Botões -->
+                        <div class="flex gap-3 pt-4">
+                            <button type="submit" class="flex-1 bg-primary text-white py-3 px-6 rounded-lg hover:bg-opacity-90 transition-colors font-medium shadow-lg">
+                                <i class="fas fa-save mr-2"></i>Salvar Orçamento
+                            </button>
+                            <button type="button" onclick="fecharModalMateriaPrima()" class="px-6 py-3 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                                <i class="fas fa-times mr-2"></i>Cancelar
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Configuração inicial e variáveis globais
+        let orcamentos = JSON.parse(localStorage.getItem('tornearia_orcamentos') || '[]');
+        let clientes = JSON.parse(localStorage.getItem('tornearia_clientes') || '[]');
+        let templates = JSON.parse(localStorage.getItem('tornearia_templates') || '[]');
+        let orcamentosMateriaPrima = JSON.parse(localStorage.getItem('tornearia_materia_prima') || '[]');
+        let orcamentoAtual = null;
+        let contadorOrcamento = parseInt(localStorage.getItem('tornearia_contador') || '1');
+        let notaFiscalAtual = null;
+        const API_BASE = window.location.origin;
+        let apiDisponivel = false;
+        let authToken = localStorage.getItem('auth_token') || '';
+        let userRole = localStorage.getItem('user_role') || '';
+
+        function showLogin(){ document.getElementById('login-view').classList.remove('hidden'); }
+        function hideLogin(){ document.getElementById('login-view').classList.add('hidden'); }
+        function aplicarPermissoes(role){
+            const btnMP = document.getElementById('tab-materia-prima');
+            const btnTemplates = document.getElementById('tab-templates');
+            const btnConfig = document.getElementById('tab-configuracoes');
+            const btnSalvarTemplate = document.getElementById('btn-salvar-template');
+            const btnLogout = document.getElementById('btn-logout');
+            if (btnLogout) btnLogout.classList.remove('hidden');
+            if (role !== 'admin') {
+                if (btnMP) btnMP.style.display = 'none';
+                if (btnTemplates) btnTemplates.style.display = 'none';
+                if (btnConfig) btnConfig.style.display = 'none';
+                if (btnSalvarTemplate) btnSalvarTemplate.style.display = 'none';
+            } else {
+                if (btnMP) btnMP.style.display = '';
+                if (btnTemplates) btnTemplates.style.display = '';
+                if (btnConfig) btnConfig.style.display = '';
+                if (btnSalvarTemplate) btnSalvarTemplate.style.display = '';
+            }
+        }
+        async function pingServidor(){
+            try{ const r = await fetch(API_BASE + '/api/health'); apiDisponivel = r.ok }catch(e){ apiDisponivel = false }
+        }
+        async function carregarDoServidor(){
+            try{
+                await pingServidor();
+                if(!apiDisponivel) return;
+                const headers = authToken ? { 'Authorization': 'Bearer ' + authToken } : {};
+                const [orcRes, cliRes, mpRes] = await Promise.all([
+                    fetch(API_BASE + '/api/budgets', { headers }),
+                    fetch(API_BASE + '/api/clients', { headers }),
+                    fetch(API_BASE + '/api/material-budgets', { headers })
+                ]);
+                const orcs = await orcRes.json();
+                const clis = await cliRes.json();
+                const mps = await mpRes.json();
+                if (orcRes.status === 401 || cliRes.status === 401 || mpRes.status === 401) { showLogin(); return; }
+                orcamentos = Array.isArray(orcs) ? orcs : [];
+                clientes = Array.isArray(clis) ? clis : [];
+                orcamentosMateriaPrima = Array.isArray(mps) ? mps : [];
+                contadorOrcamento = (orcamentos.reduce((max,o)=>{ const n = parseInt(o.numero,10); return isNaN(n)?max:Math.max(max,n) },0) + 1) || 1;
+                salvarDados();
+            }catch(e){}
+        }
+
+        // Fornecedores pré-cadastrados
+        const fornecedoresPreCadastrados = [
+            {
+                id: 1,
+                nome: "Metalúrgica São José",
+                material: "Aço 1020/1045",
+                formato: "Barra Redonda",
+                diâmetro: "25mm a 100mm",
+                preco: 8.50,
+                unidade: "kg",
+                prazo: 5,
+                telefone: "(11) 3456-7890",
+                avaliacao: 4.5,
+                destaque: true
+            },
+            {
+                id: 2,
+                nome: "Inox Brasil",
+                material: "Aço Inox 304",
+                formato: "Barra Redonda/Chapa",
+                diâmetro: "20mm a 150mm",
+                preco: 25.90,
+                unidade: "kg",
+                prazo: 7,
+                telefone: "(11) 3345-6789",
+                avaliacao: 4.8,
+                destaque: true
+            },
+            {
+                id: 3,
+                nome: "Alumínio & Cia",
+                material: "Alumínio 6061",
+                formato: "Barra Redonda/Quadrada",
+                diâmetro: "15mm a 80mm",
+                preco: 32.75,
+                unidade: "kg",
+                prazo: 3,
+                telefone: "(11) 3567-8901",
+                avaliacao: 4.3,
+                destaque: true
+            },
+            {
+                id: 4,
+                nome: "Aços Especiais RS",
+                material: "Aço 4140",
+                formato: "Barra Redonda",
+                diâmetro: "30mm a 120mm",
+                preco: 15.20,
+                unidade: "kg",
+                prazo: 10,
+                telefone: "(51) 3456-7890",
+                avaliacao: 4.6,
+                destaque: true
+            },
+            {
+                id: 5,
+                nome: "Metais Nobres",
+                material: "Bronze/Latão",
+                formato: "Barra Redonda/Quadrada",
+                diâmetro: "10mm a 50mm",
+                preco: 45.80,
+                unidade: "kg",
+                prazo: 15,
+                telefone: "(11) 3678-9012",
+                avaliacao: 4.4,
+                destaque: true
+            }
+        ];
+
+        // Inicialização
+        document.addEventListener('DOMContentLoaded', async function() {
+            const btnLogout = document.getElementById('btn-logout');
+            if (btnLogout) btnLogout.addEventListener('click', function(){ localStorage.removeItem('auth_token'); localStorage.removeItem('user_role'); authToken=''; userRole=''; showLogin(); });
+            const loginForm = document.getElementById('login-form');
+            if (loginForm) {
+                loginForm.addEventListener('submit', async function(e){ e.preventDefault(); try{ const email = document.getElementById('login-email').value; const password = document.getElementById('login-password').value; const resp = await fetch(API_BASE + '/api/auth/login', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ email, password }) }); if (!resp.ok) { showAlert('Credenciais inválidas.'); return; } const data = await resp.json(); authToken = data.token; userRole = data.role; localStorage.setItem('auth_token', authToken); localStorage.setItem('user_role', userRole); hideLogin(); aplicarPermissoes(userRole); await carregarDoServidor(); atualizarNumeroOrcamento(); showTab('dashboard'); } catch(err){ showAlert('Erro ao autenticar.'); } });
+            }
+            if (authToken) {
+                try{ const me = await fetch(API_BASE + '/api/auth/me', { headers: { 'Authorization': 'Bearer ' + authToken } }); if (me.ok) { const info = await me.json(); userRole = info.role; localStorage.setItem('user_role', userRole); hideLogin(); aplicarPermissoes(userRole); } else { showLogin(); } } catch(err){ showLogin(); }
+            } else { showLogin(); }
+            await carregarDoServidor();
+            atualizarNumeroOrcamento();
+            showTab('dashboard');
+            
+            // Configurar cálculo automático nos inputs de valor
+            document.addEventListener('input', function(e) {
+                if (e.target.classList.contains('servico-qty') || 
+                    e.target.classList.contains('servico-valor') ||
+                    e.target.id === 'desconto') {
+                    calcularTotal();
+                }
+                
+                // Cálculos para matéria-prima
+                if (e.target.id === 'material-preco-unitario' || 
+                    e.target.id === 'material-quantidade' ||
+                    e.target.id === 'valor-frete') {
+                    calcularTotalMateriaPrima();
+                }
+            });
+
+            // Configurar preview de arquivo para nota fiscal
+            const inputNotaFiscal = document.getElementById('anexo-nota-fiscal');
+            if (inputNotaFiscal) {
+                inputNotaFiscal.addEventListener('change', function(e) {
+                    previewArquivoNotaFiscal(e.target.files[0]);
+                });
+            }
+
+            // Configurar formulário de matéria-prima
+            const formMateriaPrima = document.getElementById('form-materia-prima');
+            if (formMateriaPrima) {
+                formMateriaPrima.addEventListener('submit', salvarOrcamentoMateriaPrima);
+            }
+
+            // Configurar formulário principal
+            const orcamentoForm = document.getElementById('orcamento-form');
+            if (orcamentoForm) {
+                orcamentoForm.addEventListener('submit', salvarOrcamento);
+            }
+
+            // Configurar modo escuro baseado na preferência do sistema
+            if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                document.documentElement.classList.add('dark');
+            }
+        });
+
+        // Salvar dados no localStorage
+        function salvarDados() {
+            localStorage.setItem('tornearia_orcamentos', JSON.stringify(orcamentos));
+            localStorage.setItem('tornearia_clientes', JSON.stringify(clientes));
+            localStorage.setItem('tornearia_templates', JSON.stringify(templates));
+            localStorage.setItem('tornearia_materia_prima', JSON.stringify(orcamentosMateriaPrima));
+            localStorage.setItem('tornearia_contador', contadorOrcamento.toString());
+        }
+
+        // Navegação entre abas melhorada
+        function showTab(tab) {
+            document.querySelectorAll('nav button').forEach(btn => {
+                btn.classList.remove('bg-primary', 'text-white', 'shadow-md');
+                btn.classList.add('text-gray-600', 'dark:text-gray-400');
+            });
+
+            const activeBtn = document.getElementById(`tab-${tab}`);
+            activeBtn.classList.add('bg-primary', 'text-white', 'shadow-md');
+            activeBtn.classList.remove('text-gray-600', 'dark:text-gray-400');
+
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.add('hidden');
+            });
+
+            document.getElementById(`content-${tab}`).classList.remove('hidden');
+
+            // Atualizar conteúdo específico da aba
+            switch(tab) {
+                case 'dashboard':
+                    atualizarDashboard();
+                    break;
+                case 'novo':
+                    atualizarNumeroOrcamento();
+                    atualizarSelectClientes();
+                    break;
+                case 'lista':
+                    atualizarListaOrcamentos();
+                    configurarFiltros();
+                    break;
+                case 'materia-prima':
+                    atualizarMateriaPrima();
+                    configurarFiltrosMateriaPrima();
+                    break;
+                case 'clientes':
+                    atualizarListaClientes();
+                    break;
+                case 'templates':
+                    atualizarListaTemplates();
+                    break;
+                case 'configuracoes':
+                    // Nada específico para carregar
+                    break;
+            }
+        }
+
+        // ========== FUNÇÕES DE MATÉRIA-PRIMA ==========
+
+        function atualizarMateriaPrima() {
+            atualizarFornecedoresDestaque();
+            atualizarListaMateriaPrima();
+        }
+
+        function atualizarFornecedoresDestaque() {
+            const container = document.getElementById('fornecedores-destaque');
+            const destaques = fornecedoresPreCadastrados.filter(f => f.destaque);
+            
+            container.innerHTML = destaques.map(fornecedor => `
+                <div class="material-card bg-white dark:bg-gray-700 rounded-xl p-6 border border-gray-200 dark:border-gray-600">
+                    <div class="flex justify-between items-start mb-4">
+                        <div>
+                            <h4 class="font-bold text-lg">${fornecedor.nome}</h4>
+                            <div class="flex items-center mt-1">
+                                ${gerarEstrelas(fornecedor.avaliacao)}
+                                <span class="text-sm text-gray-600 dark:text-gray-400 ml-2">${fornecedor.avaliacao}</span>
+                            </div>
+                        </div>
+                        <span class="px-2 py-1 bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-100 text-xs rounded-full">
+                            Destaque
+                        </span>
+                    </div>
+                    
+                    <div class="space-y-2 mb-4">
+                        <div class="flex justify-between">
+                            <span class="text-gray-600 dark:text-gray-400">Material:</span>
+                            <span class="font-medium">${fornecedor.material}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-600 dark:text-gray-400">Formato:</span>
+                            <span class="font-medium">${fornecedor.formato}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-600 dark:text-gray-400">Diâmetro:</span>
+                            <span class="font-medium">${fornecedor.diâmetro}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-600 dark:text-gray-400">Prazo:</span>
+                            <span class="font-medium">${fornecedor.prazo} dias</span>
+                        </div>
+                    </div>
+                    
+                    <div class="border-t border-gray-200 dark:border-gray-600 pt-4">
+                        <div class="flex justify-between items-center">
+                            <div>
+                                <span class="text-2xl font-bold text-primary">${formatarMoeda(fornecedor.preco)}</span>
+                                <span class="text-sm text-gray-600 dark:text-gray-400">/${fornecedor.unidade}</span>
+                            </div>
+                            <button onclick="usarFornecedor(${fornecedor.id})" class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-opacity-90 transition-colors text-sm">
+                                <i class="fas fa-shopping-cart mr-1"></i>Cotar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function atualizarListaMateriaPrima() {
+            const lista = document.getElementById('lista-materia-prima');
+            const vazia = document.getElementById('lista-materia-prima-vazia');
+            
+            const busca = document.getElementById('busca-materia-prima')?.value.toLowerCase() || '';
+            const filtroMaterial = document.getElementById('filtro-material')?.value || '';
+
+            let orcamentosFiltrados = orcamentosMateriaPrima;
+
+            // Aplicar filtros
+            if (busca) {
+                orcamentosFiltrados = orcamentosFiltrados.filter(o => 
+                    o.fornecedor.nome.toLowerCase().includes(busca) || 
+                    o.material.tipo.toLowerCase().includes(busca)
+                );
+            }
+
+            if (filtroMaterial) {
+                orcamentosFiltrados = orcamentosFiltrados.filter(o => 
+                    o.material.tipo.toLowerCase().includes(filtroMaterial)
+                );
+            }
+
+            if (orcamentosFiltrados.length === 0) {
+                lista.innerHTML = '';
+                vazia.style.display = 'block';
+                return;
+            }
+
+            vazia.style.display = 'none';
+            lista.innerHTML = orcamentosFiltrados.reverse().map(orc => `
+                <div class="border border-gray-200 dark:border-gray-600 rounded-xl p-6 hover:shadow-md transition-shadow duration-200 bg-white dark:bg-gray-800">
+                    <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                        <div class="flex-1">
+                            <div class="flex items-center gap-3 mb-2">
+                                <h3 class="text-xl font-bold">${orc.fornecedor.nome}</h3>
+                                <span class="text-sm text-gray-500 bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">
+                                    #${orc.numero}
+                                </span>
+                                <span class="px-2 py-1 bg-blue-100 text-blue-800 dark:bg-blue-800 dark:text-blue-100 text-xs rounded-full">
+                                    ${orc.material.tipo.toUpperCase()}
+                                </span>
+                            </div>
+                            
+                            <div class="grid md:grid-cols-3 gap-4 mt-3">
+                                <div>
+                                    <p class="text-sm text-gray-600 dark:text-gray-400">Material</p>
+                                    <p class="font-medium">${orc.material.tipo} - ${orc.material.formato}</p>
+                                </div>
+                                <div>
+                                    <p class="text-sm text-gray-600 dark:text-gray-400">Quantidade</p>
+                                    <p class="font-medium">${orc.material.quantidade} ${orc.material.unidade}</p>
+                                </div>
+                                <div>
+                                    <p class="text-sm text-gray-600 dark:text-gray-400">Prazo</p>
+                                    <p class="font-medium">${orc.condicoes.prazoEntrega} dias</p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="text-right">
+                            <div class="text-2xl font-bold text-primary mb-2">
+                                ${formatarMoeda(orc.totalGeral)}
+                            </div>
+                            <div class="text-sm text-gray-600 dark:text-gray-400">
+                                ${formatarMoeda(orc.material.precoUnitario)}/${orc.material.unidade}
+                            </div>
+                            <div class="mt-2">
+                                <span class="px-3 py-1 rounded-full text-sm font-medium ${orc.status === 'pendente' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-800 dark:text-yellow-100' : 'bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-100'}">
+                                    ${orc.status === 'pendente' ? 'Pendente' : 'Aprovado'}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="flex flex-wrap gap-2 mt-6 pt-4 border-t border-gray-200 dark:border-gray-600">
+                        <button onclick="visualizarOrcamentoMateriaPrima(${orc.id})" class="px-4 py-2 bg-primary text-white rounded-lg text-sm hover:bg-opacity-90 transition-colors">
+                            <i class="fas fa-eye mr-1"></i>Visualizar
+                        </button>
+                        <button onclick="editarOrcamentoMateriaPrima(${orc.id})" class="px-4 py-2 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600 transition-colors">
+                            <i class="fas fa-edit mr-1"></i>Editar
+                        </button>
+                        <button onclick="aprovarOrcamentoMateriaPrima(${orc.id})" class="px-4 py-2 bg-green-500 text-white rounded-lg text-sm hover:bg-green-600 transition-colors">
+                            <i class="fas fa-check mr-1"></i>Aprovar
+                        </button>
+                        <button onclick="excluirOrcamentoMateriaPrima(${orc.id})" class="px-4 py-2 bg-red-500 text-white rounded-lg text-sm hover:bg-red-600 transition-colors">
+                            <i class="fas fa-trash mr-1"></i>Excluir
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function configurarFiltrosMateriaPrima() {
+            const busca = document.getElementById('busca-materia-prima');
+            const filtro = document.getElementById('filtro-material');
+            
+            if (busca) {
+                busca.addEventListener('input', atualizarListaMateriaPrima);
+            }
+            if (filtro) {
+                filtro.addEventListener('change', atualizarListaMateriaPrima);
+            }
+        }
+
+        function novoOrcamentoMateriaPrima() {
+            document.getElementById('modal-materia-prima').classList.remove('hidden');
+            document.getElementById('form-materia-prima').reset();
+            calcularTotalMateriaPrima();
+        }
+
+        function fecharModalMateriaPrima() {
+            document.getElementById('modal-materia-prima').classList.add('hidden');
+        }
+
+        function calcularTotalMateriaPrima() {
+            const quantidade = parseFloat(document.getElementById('material-quantidade').value) || 0;
+            const precoUnitario = parseFloat(document.getElementById('material-preco-unitario').value) || 0;
+            const frete = parseFloat(document.getElementById('valor-frete').value) || 0;
+            
+            const subtotal = quantidade * precoUnitario;
+            const totalGeral = subtotal + frete;
+            
+            document.getElementById('subtotal-material').textContent = formatarMoeda(subtotal);
+            document.getElementById('total-frete').textContent = formatarMoeda(frete);
+            document.getElementById('total-geral-mp').textContent = formatarMoeda(totalGeral);
+        }
+
+        function usarFornecedor(id) {
+            const fornecedor = fornecedoresPreCadastrados.find(f => f.id === id);
+            if (!fornecedor) return;
+            
+            novoOrcamentoMateriaPrima();
+            
+            setTimeout(() => {
+                document.getElementById('fornecedor-nome').value = fornecedor.nome;
+                document.getElementById('fornecedor-telefone').value = fornecedor.telefone;
+                document.getElementById('material-tipo').value = fornecedor.material.split(' ')[0].toLowerCase();
+                document.getElementById('material-formato').value = fornecedor.formato.toLowerCase().includes('redonda') ? 'barra-redonda' : 
+                                                                   fornecedor.formato.toLowerCase().includes('quadrada') ? 'barra-quadrada' : 'barra-redonda';
+                document.getElementById('material-diametro').value = fornecedor.diâmetro;
+                document.getElementById('material-preco-unitario').value = fornecedor.preco;
+                document.getElementById('material-unidade').value = fornecedor.unidade;
+                document.getElementById('prazo-entrega-mp').value = fornecedor.prazo;
+                
+                calcularTotalMateriaPrima();
+            }, 100);
+        }
+
+        function salvarOrcamentoMateriaPrima(e) {
+            e.preventDefault();
+            
+            const orcamento = {
+                id: Date.now(),
+                numero: `MP${String(orcamentosMateriaPrima.length + 1).padStart(3, '0')}`,
+                data: new Date().toLocaleDateString('pt-BR'),
+                fornecedor: {
+                    nome: document.getElementById('fornecedor-nome').value,
+                    cnpj: document.getElementById('fornecedor-cnpj').value,
+                    telefone: document.getElementById('fornecedor-telefone').value,
+                    email: document.getElementById('fornecedor-email').value,
+                    endereco: document.getElementById('fornecedor-endereco').value
+                },
+                material: {
+                    tipo: document.getElementById('material-tipo').value,
+                    formato: document.getElementById('material-formato').value,
+                    diametro: document.getElementById('material-diametro').value,
+                    quantidade: parseFloat(document.getElementById('material-quantidade').value),
+                    unidade: document.getElementById('material-unidade').value,
+                    precoUnitario: parseFloat(document.getElementById('material-preco-unitario').value)
+                },
+                condicoes: {
+                    prazoEntrega: parseInt(document.getElementById('prazo-entrega-mp').value) || 0,
+                    condicaoPagamento: document.getElementById('condicao-pagamento').value,
+                    tipoFrete: document.getElementById('tipo-frete').value,
+                    valorFrete: parseFloat(document.getElementById('valor-frete').value) || 0
+                },
+                observacoes: document.getElementById('observacoes-mp').value,
+                subtotalMaterial: parseFloat(document.getElementById('material-quantidade').value) * parseFloat(document.getElementById('material-preco-unitario').value),
+                totalGeral: (parseFloat(document.getElementById('material-quantidade').value) * parseFloat(document.getElementById('material-preco-unitario').value)) + (parseFloat(document.getElementById('valor-frete').value) || 0),
+                status: 'pendente'
+            };
+
+            async function salvarMpServidor(){
+                try{
+                    const resp = await fetch(API_BASE + '/api/material-budgets', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(orcamento) })
+                    if (resp.ok){
+                        const saved = await resp.json();
+                        orcamento.id = saved.id;
+                        orcamentosMateriaPrima.push(orcamento);
+                        salvarDados();
+                        return true;
+                    }
+                }catch(err){}
+                return false;
+            }
+            if (apiDisponivel) {
+                salvarMpServidor().then(ok => {
+                    fecharModalMateriaPrima();
+                    showAlert('Orçamento de matéria-prima salvo com sucesso!');
+                    atualizarMateriaPrima();
+                })
+            } else {
+                orcamentosMateriaPrima.push(orcamento);
+                salvarDados();
+                fecharModalMateriaPrima();
+                showAlert('Orçamento de matéria-prima salvo com sucesso!');
+                atualizarMateriaPrima();
+            }
+        }
+
+        function visualizarOrcamentoMateriaPrima(id) {
+            const orcamento = orcamentosMateriaPrima.find(o => o.id === id);
+            if (!orcamento) return;
+            
+            const conteudo = `
+                <div class="bg-white dark:bg-gray-700 rounded-lg p-6">
+                    <h3 class="text-2xl font-bold mb-4 text-primary">ORÇAMENTO DE MATÉRIA-PRIMA - ${orcamento.numero}</h3>
+                    
+                    <div class="grid md:grid-cols-2 gap-6 mb-6">
+                        <div>
+                            <h4 class="font-semibold text-lg mb-3">FORNECEDOR</h4>
+                            <div class="space-y-2">
+                                <p><strong>Nome:</strong> ${orcamento.fornecedor.nome}</p>
+                                ${orcamento.fornecedor.cnpj ? `<p><strong>CNPJ:</strong> ${orcamento.fornecedor.cnpj}</p>` : ''}
+                                ${orcamento.fornecedor.telefone ? `<p><strong>Telefone:</strong> ${orcamento.fornecedor.telefone}</p>` : ''}
+                                ${orcamento.fornecedor.email ? `<p><strong>E-mail:</strong> ${orcamento.fornecedor.email}</p>` : ''}
+                                ${orcamento.fornecedor.endereco ? `<p><strong>Endereço:</strong> ${orcamento.fornecedor.endereco}</p>` : ''}
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <h4 class="font-semibold text-lg mb-3">MATERIAL</h4>
+                            <div class="space-y-2">
+                                <p><strong>Tipo:</strong> ${orcamento.material.tipo}</p>
+                                <p><strong>Formato:</strong> ${orcamento.material.formato}</p>
+                                ${orcamento.material.diametro ? `<p><strong>Diâmetro/Espessura:</strong> ${orcamento.material.diametro} mm</p>` : ''}
+                                <p><strong>Quantidade:</strong> ${orcamento.material.quantidade} ${orcamento.material.unidade}</p>
+                                <p><strong>Preço Unitário:</strong> ${formatarMoeda(orcamento.material.precoUnitario)}/${orcamento.material.unidade}</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="grid md:grid-cols-2 gap-6 mb-6">
+                        <div>
+                            <h4 class="font-semibold text-lg mb-3">CONDIÇÕES</h4>
+                            <div class="space-y-2">
+                                <p><strong>Prazo de Entrega:</strong> ${orcamento.condicoes.prazoEntrega} dias</p>
+                                <p><strong>Condição de Pagamento:</strong> ${orcamento.condicoes.condicaoPagamento}</p>
+                                <p><strong>Frete:</strong> ${orcamento.condicoes.tipoFrete}</p>
+                                ${orcamento.condicoes.valorFrete > 0 ? `<p><strong>Valor do Frete:</strong> ${formatarMoeda(orcamento.condicoes.valorFrete)}</p>` : ''}
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <h4 class="font-semibold text-lg mb-3">VALORES</h4>
+                            <div class="space-y-2 text-right">
+                                <p><strong>Subtotal Material:</strong> ${formatarMoeda(orcamento.subtotalMaterial)}</p>
+                                ${orcamento.condicoes.valorFrete > 0 ? `<p><strong>Frete:</strong> ${formatarMoeda(orcamento.condicoes.valorFrete)}</p>` : ''}
+                                <p class="text-xl font-bold text-green-600"><strong>TOTAL GERAL:</strong> ${formatarMoeda(orcamento.totalGeral)}</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    ${orcamento.observacoes ? `
+                        <div class="mb-6">
+                            <h4 class="font-semibold text-lg mb-3">OBSERVAÇÕES</h4>
+                            <p class="text-gray-700 dark:text-gray-300">${orcamento.observacoes}</p>
+                        </div>
+                    ` : ''}
+                    
+                    <div class="flex justify-between items-center">
+                        <span class="px-3 py-1 rounded-full text-sm font-medium ${orcamento.status === 'pendente' ? 'bg-yellow-100 text-yellow-800' : 'bg-green-100 text-green-800'}">
+                            Status: ${orcamento.status === 'pendente' ? 'Pendente' : 'Aprovado'}
+                        </span>
+                        <span class="text-gray-600 dark:text-gray-400">Data: ${orcamento.data}</span>
+                    </div>
+                </div>
+            `;
+            
+            document.getElementById('modal-conteudo').innerHTML = conteudo;
+            document.getElementById('modal-visualizar').classList.remove('hidden');
+        }
+
+        function editarOrcamentoMateriaPrima(id) {
+            const orcamento = orcamentosMateriaPrima.find(o => o.id === id);
+            if (!orcamento) return;
+            
+            // Preencher o formulário com os dados existentes
+            document.getElementById('modal-materia-prima').classList.remove('hidden');
+            
+            document.getElementById('fornecedor-nome').value = orcamento.fornecedor.nome;
+            document.getElementById('fornecedor-cnpj').value = orcamento.fornecedor.cnpj || '';
+            document.getElementById('fornecedor-telefone').value = orcamento.fornecedor.telefone || '';
+            document.getElementById('fornecedor-email').value = orcamento.fornecedor.email || '';
+            document.getElementById('fornecedor-endereco').value = orcamento.fornecedor.endereco || '';
+            
+            document.getElementById('material-tipo').value = orcamento.material.tipo;
+            document.getElementById('material-formato').value = orcamento.material.formato;
+            document.getElementById('material-diametro').value = orcamento.material.diametro || '';
+            document.getElementById('material-quantidade').value = orcamento.material.quantidade;
+            document.getElementById('material-unidade').value = orcamento.material.unidade;
+            document.getElementById('material-preco-unitario').value = orcamento.material.precoUnitario;
+            
+            document.getElementById('prazo-entrega-mp').value = orcamento.condicoes.prazoEntrega;
+            document.getElementById('condicao-pagamento').value = orcamento.condicoes.condicaoPagamento;
+            document.getElementById('tipo-frete').value = orcamento.condicoes.tipoFrete;
+            document.getElementById('valor-frete').value = orcamento.condicoes.valorFrete;
+            
+            document.getElementById('observacoes-mp').value = orcamento.observacoes || '';
+            
+            calcularTotalMateriaPrima();
+            
+            // Remover o orçamento antigo
+            const index = orcamentosMateriaPrima.findIndex(o => o.id === id);
+            if (index !== -1) {
+                orcamentosMateriaPrima.splice(index, 1);
+            }
+        }
+
+        function aprovarOrcamentoMateriaPrima(id) {
+            const orcamento = orcamentosMateriaPrima.find(o => o.id === id);
+            if (orcamento) {
+                orcamento.status = 'aprovado';
+                salvarDados();
+                atualizarMateriaPrima();
+                showAlert('Orçamento aprovado com sucesso!');
+            }
+        }
+
+        function excluirOrcamentoMateriaPrima(id) {
+            showConfirmDialog('Tem certeza que deseja excluir este orçamento de matéria-prima?', () => {
+                const index = orcamentosMateriaPrima.findIndex(o => o.id === id);
+                if (index !== -1) {
+                    orcamentosMateriaPrima.splice(index, 1);
+                    salvarDados();
+                    atualizarMateriaPrima();
+                    showAlert('Orçamento excluído com sucesso!');
+                }
+            });
+        }
+
+        function gerarEstrelas(avaliacao) {
+            const estrelasCheias = Math.floor(avaliacao);
+            const temMeiaEstrela = avaliacao % 1 !== 0;
+            const estrelasVazias = 5 - estrelasCheias - (temMeiaEstrela ? 1 : 0);
+            
+            let html = '';
+            
+            for (let i = 0; i < estrelasCheias; i++) {
+                html += '<i class="fas fa-star text-yellow-400"></i>';
+            }
+            
+            if (temMeiaEstrela) {
+                html += '<i class="fas fa-star-half-alt text-yellow-400"></i>';
+            }
+            
+            for (let i = 0; i < estrelasVazias; i++) {
+                html += '<i class="far fa-star text-yellow-400"></i>';
+            }
+            
+            return html;
+        }
+
+        // ========== FUNÇÕES EXISTENTES DO SISTEMA ==========
+
+        // Dashboard functions
+        function atualizarDashboard() {
+            const totalOrcamentos = orcamentos.length;
+            const realizados = orcamentos.filter(o => o.realizado).length;
+            const pendentes = totalOrcamentos - realizados;
+            const valorTotal = orcamentos.reduce((sum, o) => sum + (o.valorFinal || o.total), 0);
+
+            document.getElementById('orcamento-counter').textContent = totalOrcamentos;
+            document.getElementById('total-orcamentos').textContent = totalOrcamentos;
+            document.getElementById('total-realizados').textContent = realizados;
+            document.getElementById('total-pendentes').textContent = pendentes;
+            document.getElementById('valor-total').textContent = formatarMoeda(valorTotal);
+
+            // Orçamentos recentes
+            const recentes = orcamentos.slice(-5).reverse();
+            const recentesContainer = document.getElementById('orcamentos-recentes');
+            recentesContainer.innerHTML = recentes.length ? recentes.map(o => `
+                <div class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                    <div>
+                        <p class="font-medium">${o.nome}</p>
+                        <p class="text-sm text-gray-600 dark:text-gray-400">${o.data}</p>
+                    </div>
+                    <div class="text-right">
+                        <p class="font-bold text-primary">${formatarMoeda(o.valorFinal || o.total)}</p>
+                        <span class="text-xs px-2 py-1 rounded-full ${o.realizado ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}">
+                            ${o.realizado ? 'Realizado' : 'Pendente'}
+                        </span>
+                    </div>
+                </div>
+            `).join('') : '<p class="text-gray-500 text-center py-8">Nenhum orçamento ainda</p>';
+
+            // Clientes frequentes
+            const clientesFreq = {};
+            orcamentos.forEach(o => {
+                const key = o.nome;
+                clientesFreq[key] = (clientesFreq[key] || 0) + 1;
+            });
+            
+            const topClientes = Object.entries(clientesFreq)
+                .sort(([,a], [,b]) => b - a)
+                .slice(0, 5);
+
+            const clientesContainer = document.getElementById('clientes-frequentes');
+            clientesContainer.innerHTML = topClientes.length ? topClientes.map(([nome, count]) => `
+                <div class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                    <p class="font-medium">${nome}</p>
+                    <span class="text-sm text-gray-600 dark:text-gray-400">${count} orçamento${count > 1 ? 's' : ''}</span>
+                </div>
+            `).join('') : '<p class="text-gray-500 text-center py-8">Nenhum cliente ainda</p>';
+        }
+
+        // Formatação de moeda
+        function formatarMoeda(valor) {
+            return new Intl.NumberFormat('pt-BR', {
+                style: 'currency',
+                currency: 'BRL'
+            }).format(valor);
+        }
+
+        // Atualizar número do orçamento
+        function atualizarNumeroOrcamento() {
+            document.getElementById('numero-orcamento').textContent = String(contadorOrcamento).padStart(3, '0');
+        }
+
+        // Atualizar select de clientes
+        function atualizarSelectClientes() {
+            const select = document.getElementById('cliente-existente');
+            select.innerHTML = '<option value="">Selecione um cliente ou cadastre novo</option>';
+            
+            clientes.forEach(cliente => {
+                const option = document.createElement('option');
+                option.value = JSON.stringify(cliente);
+                option.textContent = `${cliente.nome} ${cliente.empresa ? `- ${cliente.empresa}` : ''}`;
+                select.appendChild(option);
+            });
+        }
+
+        // Preencher dados do cliente selecionado
+        function preencherDadosCliente() {
+            const select = document.getElementById('cliente-existente');
+            if (select.value) {
+                const cliente = JSON.parse(select.value);
+                document.getElementById('nome-proprietario').value = cliente.nome;
+                document.getElementById('empresa').value = cliente.empresa || '';
+                document.getElementById('telefone').value = cliente.telefone || '';
+                document.getElementById('email').value = cliente.email || '';
+            }
+        }
+
+        // Adicionar serviço melhorado
+        function adicionarServico() {
+            const container = document.getElementById('servicos-container');
+            const novoServico = document.createElement('div');
+            novoServico.className = 'servico-item bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-600 animate-slide-up';
+            novoServico.innerHTML = `
+                <div class="flex items-start gap-3">
+                    <div class="drag-handle text-gray-400 mt-3 cursor-grab">
+                        <i class="fas fa-grip-vertical"></i>
+                    </div>
+                    <div class="flex-1 grid md:grid-cols-4 gap-3">
+                        <div class="md:col-span-2">
+                            <label class="block text-sm font-medium mb-1">Descrição do Serviço</label>
+                            <input type="text" placeholder="Ex: Torneamento externo, Furação" class="servico-desc w-full p-2 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-base">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium mb-1">Quantidade</label>
+                            <input type="number" placeholder="1" class="servico-qty w-full p-2 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-base" min="1" value="1" onchange="calcularTotal()">
+                        </div>
+                        <div class="flex gap-2">
+                            <div class="flex-1">
+                                <label class="block text-sm font-medium mb-1">Valor Unitário</label>
+                                <input type="number" placeholder="0.00" class="servico-valor w-full p-2 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-base" step="0.01" onchange="calcularTotal()">
+                            </div>
+                            <div class="pt-6">
+                                <button type="button" onclick="removerServico(this)" class="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900 rounded transition-colors" title="Remover serviço">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-2 text-right">
+                    <span class="text-sm text-gray-600 dark:text-gray-400">Subtotal: </span>
+                    <span class="servico-subtotal font-semibold text-primary">R$ 0,00</span>
+                </div>
+            `;
+            container.appendChild(novoServico);
+        }
+
+        // Remover serviço
+        function removerServico(btn) {
+            const servicoItem = btn.closest('.servico-item');
+            servicoItem.style.animation = 'fadeOut 0.3s ease-out';
+            setTimeout(() => {
+                servicoItem.remove();
+                calcularTotal();
+            }, 300);
+        }
+
+        // Calcular total melhorado
+        function calcularTotal() {
+            let total = 0;
+            document.querySelectorAll('.servico-item').forEach(item => {
+                const qty = parseFloat(item.querySelector('.servico-qty').value) || 0;
+                const valor = parseFloat(item.querySelector('.servico-valor').value) || 0;
+                const subtotal = qty * valor;
+                
+                item.querySelector('.servico-subtotal').textContent = formatarMoeda(subtotal);
+                total += subtotal;
+            });
+
+            document.getElementById('total-geral').textContent = formatarMoeda(total);
+            
+            // Aplicar desconto
+            const desconto = parseFloat(document.getElementById('desconto').value) || 0;
+            const valorFinal = total * (1 - desconto / 100);
+            document.getElementById('valor-final').textContent = formatarMoeda(valorFinal);
+        }
+
+        // Limpar formulário melhorado
+        function limparFormulario() {
+            document.getElementById('orcamento-form').reset();
+            document.getElementById('cliente-existente').value = '';
+            
+            const container = document.getElementById('servicos-container');
+            container.innerHTML = `
+                <div class="servico-item bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-600">
+                    <div class="flex items-start gap-3">
+                        <div class="drag-handle text-gray-400 mt-3 cursor-grab">
+                            <i class="fas fa-grip-vertical"></i>
+                        </div>
+                        <div class="flex-1 grid md:grid-cols-4 gap-3">
+                            <div class="md:col-span-2">
+                                <label class="block text-sm font-medium mb-1">Descrição do Serviço</label>
+                                <input type="text" placeholder="Ex: Torneamento externo, Furação" class="servico-desc w-full p-2 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-base">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium mb-1">Quantidade</label>
+                                <input type="number" placeholder="1" class="servico-qty w-full p-2 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-base" min="1" value="1" onchange="calcularTotal()">
+                            </div>
+                            <div class="flex gap-2">
+                                <div class="flex-1">
+                                    <label class="block text-sm font-medium mb-1">Valor Unitário</label>
+                                    <input type="number" placeholder="0.00" class="servico-valor w-full p-2 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-base" step="0.01" onchange="calcularTotal()">
+                                </div>
+                                <div class="pt-6">
+                                    <button type="button" onclick="removerServico(this)" class="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900 rounded transition-colors" title="Remover serviço">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-2 text-right">
+                        <span class="text-sm text-gray-600 dark:text-gray-400">Subtotal: </span>
+                        <span class="servico-subtotal font-semibold text-primary">R$ 0,00</span>
+                    </div>
+                </div>
+            `;
+            
+            calcularTotal();
+        }
+
+        // Preview do orçamento
+        function previewOrcamento() {
+            const servicos = [];
+            document.querySelectorAll('.servico-item').forEach(item => {
+                const desc = item.querySelector('.servico-desc').value;
+                const qty = parseInt(item.querySelector('.servico-qty').value) || 1;
+                const valor = parseFloat(item.querySelector('.servico-valor').value) || 0;
+                
+                if (desc.trim()) {
+                    servicos.push({
+                        descricao: desc.trim(),
+                        quantidade: qty,
+                        valor: valor,
+                        total: qty * valor
+                    });
+                }
+            });
+
+            if (servicos.length === 0) {
+                showAlert('Adicione pelo menos um serviço para visualizar o orçamento.');
+                return;
+            }
+
+            const desconto = parseFloat(document.getElementById('desconto').value) || 0;
+            const total = servicos.reduce((sum, s) => sum + s.total, 0);
+            const valorFinal = total * (1 - desconto / 100);
+
+            const orcamentoPreview = {
+                numero: String(contadorOrcamento).padStart(3, '0'),
+                data: new Date().toLocaleDateString('pt-BR'),
+                nome: document.getElementById('nome-proprietario').value || 'Nome não informado',
+                empresa: document.getElementById('empresa').value,
+                telefone: document.getElementById('telefone').value,
+                email: document.getElementById('email').value,
+                material: document.getElementById('material').value,
+                dimensoes: document.getElementById('dimensoes').value,
+                codigo: document.getElementById('codigo').value,
+                prazoEntrega: document.getElementById('prazo-entrega').value,
+                servicos: servicos,
+                observacoes: document.getElementById('observacoes').value,
+                desconto: desconto,
+                total: total,
+                valorFinal: valorFinal,
+                realizado: false
+            };
+
+            orcamentoAtual = orcamentoPreview;
+            mostrarOrcamentoModal();
+        }
+
+        // Salvar orçamento melhorado
+        function salvarOrcamento(e) {
+            e.preventDefault();
+            
+            const servicos = [];
+            document.querySelectorAll('.servico-item').forEach(item => {
+                const desc = item.querySelector('.servico-desc').value;
+                const qty = parseInt(item.querySelector('.servico-qty').value) || 1;
+                const valor = parseFloat(item.querySelector('.servico-valor').value) || 0;
+                
+                if (desc.trim()) {
+                    servicos.push({
+                        descricao: desc.trim(),
+                        quantidade: qty,
+                        valor: valor,
+                        total: qty * valor
+                    });
+                }
+            });
+
+            if (servicos.length === 0) {
+                showAlert('Adicione pelo menos um serviço ao orçamento.');
+                return;
+            }
+
+            const nome = document.getElementById('nome-proprietario').value;
+            if (!nome.trim()) {
+                showAlert('Nome do proprietário é obrigatório.');
+                return;
+            }
+
+            const desconto = parseFloat(document.getElementById('desconto').value) || 0;
+            const total = servicos.reduce((sum, s) => sum + s.total, 0);
+            const valorFinal = total * (1 - desconto / 100);
+
+            const orcamento = {
+                id: Date.now(),
+                numero: String(contadorOrcamento).padStart(3, '0'),
+                data: new Date().toLocaleDateString('pt-BR'),
+                nome: nome,
+                empresa: document.getElementById('empresa').value,
+                telefone: document.getElementById('telefone').value,
+                email: document.getElementById('email').value,
+                material: document.getElementById('material').value,
+                dimensoes: document.getElementById('dimensoes').value,
+                codigo: document.getElementById('codigo').value,
+                prazoEntrega: document.getElementById('prazo-entrega').value,
+                servicos: servicos,
+                observacoes: document.getElementById('observacoes').value,
+                desconto: desconto,
+                total: total,
+                valorFinal: valorFinal,
+                realizado: false,
+                notaFiscal: null
+            };
+
+            async function salvarServidor(){
+                try{
+                    const resp = await fetch(API_BASE + '/api/budgets', { method:'POST', headers:{ 'Content-Type':'application/json', 'Authorization': 'Bearer ' + authToken }, body: JSON.stringify({ ...orcamento, cliente: { nome: orcamento.nome, empresa: orcamento.empresa, telefone: orcamento.telefone, email: orcamento.email } }) })
+                    if (resp.ok){
+                        const saved = await resp.json();
+                        orcamentos.push(saved);
+                        const clienteExiste = clientes.some(c => c.nome.toLowerCase() === (saved.nome||'').toLowerCase() && (c.empresa||'').toLowerCase() === (saved.empresa||'').toLowerCase());
+                        if (!clienteExiste) clientes.push({ nome: saved.nome, empresa: saved.empresa, telefone: saved.telefone, email: saved.email });
+                        contadorOrcamento++;
+                        salvarDados();
+                        return true;
+                    }
+                }catch(err){}
+                return false;
+            }
+            if (apiDisponivel) {
+                salvarServidor().then(ok => {
+                    showAlert('Orçamento salvo com sucesso!');
+                    limparFormulario();
+                    atualizarNumeroOrcamento();
+                    showTab('lista');
+                })
+            } else {
+                orcamentos.push(orcamento);
+                contadorOrcamento++;
+                const cliente = { nome: orcamento.nome, empresa: orcamento.empresa, telefone: orcamento.telefone, email: orcamento.email };
+                const clienteExiste = clientes.some(c => c.nome.toLowerCase() === cliente.nome.toLowerCase() && c.empresa.toLowerCase() === (cliente.empresa || '').toLowerCase());
+                if (!clienteExiste) { clientes.push(cliente); }
+                salvarDados();
+                showAlert('Orçamento salvo com sucesso!');
+                limparFormulario();
+                atualizarNumeroOrcamento();
+                showTab('lista');
+            }
+        }
+
+        // Lista de orçamentos melhorada com filtros
+        function atualizarListaOrcamentos() {
+            const lista = document.getElementById('orcamentos-lista');
+            const vazia = document.getElementById('lista-vazia');
+            
+            const busca = document.getElementById('busca-orcamentos')?.value.toLowerCase() || '';
+            const filtroStatus = document.getElementById('filtro-status')?.value || '';
+
+            let orcamentosFiltrados = orcamentos;
+
+            // Aplicar filtros
+            if (busca) {
+                orcamentosFiltrados = orcamentosFiltrados.filter(o => 
+                    o.nome.toLowerCase().includes(busca) || 
+                    (o.empresa || '').toLowerCase().includes(busca) ||
+                    o.numero.includes(busca)
+                );
+            }
+
+            if (filtroStatus) {
+                orcamentosFiltrados = orcamentosFiltrados.filter(o => 
+                    filtroStatus === 'realizado' ? o.realizado : !o.realizado
+                );
+            }
+
+            if (orcamentosFiltrados.length === 0) {
+                lista.innerHTML = '';
+                vazia.style.display = 'block';
+                return;
+            }
+
+            vazia.style.display = 'none';
+            lista.innerHTML = orcamentosFiltrados.reverse().map(orc => `
+                <div class="border border-gray-200 dark:border-gray-600 rounded-xl p-6 hover:shadow-md transition-shadow duration-200 bg-white dark:bg-gray-800">
+                    <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                        <div class="flex-1">
+                            <div class="flex items-center gap-3 mb-2">
+                                <h3 class="text-xl font-bold">${orc.nome}</h3>
+                                <span class="text-sm text-gray-500 bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">
+                                    #${orc.numero}
+                                </span>
+                                ${orc.notaFiscal ? `
+                                    <span class="text-sm bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-100 px-2 py-1 rounded flex items-center">
+                                        <i class="fas fa-receipt mr-1"></i>Com NF
+                                    </span>
+                                ` : ''}
+                            </div>
+                            ${orc.empresa ? `<p class="text-gray-600 dark:text-gray-400 font-medium">${orc.empresa}</p>` : ''}
+                            <div class="flex flex-wrap gap-4 mt-2 text-sm text-gray-600 dark:text-gray-400">
+                                <span><i class="fas fa-calendar mr-1"></i>${orc.data}</span>
+                                ${orc.prazoEntrega ? `<span><i class="fas fa-clock mr-1"></i>Entrega: ${new Date(orc.prazoEntrega + 'T00:00:00').toLocaleDateString('pt-BR')}</span>` : ''}
+                                ${orc.material ? `<span><i class="fas fa-cog mr-1"></i>${orc.material}</span>` : ''}
+                            </div>
+                        </div>
+                        
+                        <div class="text-right">
+                            <div class="text-2xl font-bold text-primary mb-2">
+                                ${formatarMoeda(orc.valorFinal || orc.total)}
+                            </div>
+                            ${orc.desconto > 0 ? `
+                                <div class="text-sm text-gray-500 line-through">${formatarMoeda(orc.total)}</div>
+                                <div class="text-sm text-green-600 font-medium">Desconto: ${orc.desconto}%</div>
+                            ` : ''}
+                            <div class="mt-2">
+                                <span class="px-3 py-1 rounded-full text-sm font-medium ${orc.realizado ? 'bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-100' : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-800 dark:text-yellow-100'}">
+                                    ${orc.realizado ? 'Realizado' : 'Pendente'}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="flex flex-wrap gap-2 mt-6 pt-4 border-t border-gray-200 dark:border-gray-600">
+                        <button onclick="visualizarOrcamento(${orc.id})" class="px-4 py-2 bg-primary text-white rounded-lg text-sm hover:bg-opacity-90 transition-colors">
+                            <i class="fas fa-eye mr-1"></i>Visualizar
+                        </button>
+                        ${userRole === 'admin' ? `
+                        <button onclick="toggleRealizado(${orc.id})" class="px-4 py-2 ${orc.realizado ? 'bg-yellow-500 hover:bg-yellow-600' : 'bg-green-500 hover:bg-green-600'} text-white rounded-lg text-sm transition-colors">
+                            <i class="fas ${orc.realizado ? 'fa-undo' : 'fa-check'} mr-1"></i>${orc.realizado ? 'Marcar Pendente' : 'Marcar Realizado'}
+                        </button>
+                        ${orc.realizado && !orc.notaFiscal ? `
+                            <button onclick="adicionarNotaFiscal(${orc.id})" class="px-4 py-2 bg-purple-500 text-white rounded-lg text-sm hover:bg-purple-600 transition-colors">
+                                <i class="fas fa-receipt mr-1"></i>Adicionar NF
+                            </button>
+                        ` : ''}
+                        ${orc.notaFiscal ? `
+                            <button onclick="visualizarNotaFiscal(${orc.id})" class="px-4 py-2 bg-indigo-500 text-white rounded-lg text-sm hover:bg-indigo-600 transition-colors">
+                                <i class="fas fa-file-invoice mr-1"></i>Ver NF
+                            </button>
+                        ` : ''}
+                        <button onclick="duplicarOrcamento(${orc.id})" class="px-4 py-2 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600 transition-colors">
+                            <i class="fas fa-copy mr-1"></i>Duplicar
+                        </button>
+                        <button onclick="editarOrcamento(${orc.id})" class="px-4 py-2 bg-purple-500 text-white rounded-lg text-sm hover:bg-purple-600 transition-colors">
+                            <i class="fas fa-edit mr-1"></i>Editar
+                        </button>
+                        <button onclick="excluirOrcamento(${orc.id})" class="px-4 py-2 bg-red-500 text-white rounded-lg text-sm hover:bg-red-600 transition-colors">
+                            <i class="fas fa-trash mr-1"></i>Excluir
+                        </button>
+                        ` : ''}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // Configurar filtros
+        function configurarFiltros() {
+            const busca = document.getElementById('busca-orcamentos');
+            const filtro = document.getElementById('filtro-status');
+            
+            if (busca) {
+                busca.addEventListener('input', atualizarListaOrcamentos);
+            }
+            if (filtro) {
+                filtro.addEventListener('change', atualizarListaOrcamentos);
+            }
+        }
+
+        // Visualizar orçamento melhorado
+        function visualizarOrcamento(id) {
+            const orcamento = orcamentos.find(o => o.id === id);
+            if (!orcamento) return;
+            orcamentoAtual = orcamento;
+            mostrarOrcamentoModal();
+        }
+
+        function mostrarOrcamentoModal() {
+            const conteudo = document.getElementById('modal-conteudo');
+            const orc = orcamentoAtual;
+            
+            conteudo.innerHTML = `
+                <div class="bg-gradient-to-br from-gray-50 to-white dark:from-gray-700 dark:to-gray-800 rounded-xl p-8 border border-gray-200 dark:border-gray-600">
+                    <div class="flex justify-between items-center mb-8 pb-6 border-b border-gray-200 dark:border-gray-600">
+                        <div>
+                            <h2 class="text-3xl font-bold text-primary">ORÇAMENTO</h2>
+                            <div class="flex gap-4 mt-2 text-gray-600 dark:text-gray-400">
+                                <span>Nº ${orc.numero}</span>
+                                <span>Data: ${orc.data}</span>
+                                ${orc.prazoEntrega ? `<span>Entrega: ${new Date(orc.prazoEntrega + 'T00:00:00').toLocaleDateString('pt-BR')}</span>` : ''}
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <span class="px-4 py-2 rounded-full text-sm font-medium ${orc.realizado ? 'bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-100' : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-800 dark:text-yellow-100'}">
+                                ${orc.realizado ? 'REALIZADO' : 'PENDENTE'}
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="grid lg:grid-cols-2 gap-8 mb-8">
+                        <div class="bg-white dark:bg-gray-700 rounded-lg p-6">
+                            <h3 class="font-bold text-lg mb-4 text-primary">DADOS DO CLIENTE</h3>
+                            <div class="space-y-2">
+                                <p><span class="font-medium">Nome:</span> ${orc.nome}</p>
+                                ${orc.empresa ? `<p><span class="font-medium">Empresa:</span> ${orc.empresa}</p>` : ''}
+                                ${orc.telefone ? `<p><span class="font-medium">Telefone:</span> ${orc.telefone}</p>` : ''}
+                                ${orc.email ? `<p><span class="font-medium">E-mail:</span> ${orc.email}</p>` : ''}
+                            </div>
+                        </div>
+                        
+                        <div class="bg-white dark:bg-gray-700 rounded-lg p-6">
+                            <h3 class="font-bold text-lg mb-4 text-primary">PEÇA/MATERIAL</h3>
+                            <div class="space-y-2">
+                                ${orc.material ? `<p><span class="font-medium">Material:</span> ${orc.material}</p>` : ''}
+                                ${orc.dimensoes ? `<p><span class="font-medium">Dimensões:</span> ${orc.dimensoes}</p>` : ''}
+                                ${orc.codigo ? `<p><span class="font-medium">Desenho:</span> ${orc.codigo}</p>` : ''}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mb-8">
+                        <h3 class="font-bold text-lg mb-4 text-primary">SERVIÇOS DE USINAGEM</h3>
+                        <div class="overflow-x-auto bg-white dark:bg-gray-700 rounded-lg">
+                            <table class="w-full">
+                                <thead>
+                                    <tr class="bg-gray-100 dark:bg-gray-600">
+                                        <th class="p-4 text-left font-semibold">Descrição</th>
+                                        <th class="p-4 text-center font-semibold">Qtd</th>
+                                        <th class="p-4 text-right font-semibold">Valor Unit.</th>
+                                        <th class="p-4 text-right font-semibold">Total</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${orc.servicos.map((servico, index) => `
+                                        <tr class="${index % 2 === 0 ? 'bg-gray-50 dark:bg-gray-800' : 'bg-white dark:bg-gray-700'}">
+                                            <td class="p-4">${servico.descricao}</td>
+                                            <td class="p-4 text-center">${servico.quantidade}</td>
+                                            <td class="p-4 text-right">${formatarMoeda(servico.valor)}</td>
+                                            <td class="p-4 text-right font-semibold">${formatarMoeda(servico.total)}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                                <tfoot>
+                                    <tr class="bg-gray-100 dark:bg-gray-600 font-bold">
+                                        <td colspan="3" class="p-4 text-right">SUBTOTAL:</td>
+                                        <td class="p-4 text-right text-lg">${formatarMoeda(orc.total)}</td>
+                                    </tr>
+                                    ${orc.desconto > 0 ? `
+                                        <tr class="bg-gray-100 dark:bg-gray-600 font-bold text-green-600">
+                                            <td colspan="3" class="p-4 text-right">DESCONTO (${orc.desconto}%):</td>
+                                            <td class="p-4 text-right">-${formatarMoeda(orc.total * orc.desconto / 100)}</td>
+                                        </tr>
+                                    ` : ''}
+                                    <tr class="bg-primary text-white font-bold text-lg">
+                                        <td colspan="3" class="p-4 text-right">TOTAL GERAL:</td>
+                                        <td class="p-4 text-right">${formatarMoeda(orc.valorFinal || orc.total)}</td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    </div>
+
+                    ${orc.notaFiscal ? `
+                        <div class="bg-white dark:bg-gray-700 rounded-lg p-6 mb-6">
+                            <h3 class="font-bold text-lg mb-4 text-primary flex items-center">
+                                <i class="fas fa-receipt mr-2"></i>
+                                NOTA FISCAL
+                            </h3>
+                            <div class="grid md:grid-cols-2 gap-4">
+                                <div>
+                                    <p><span class="font-medium">Número:</span> ${orc.notaFiscal.numero}</p>
+                                    <p><span class="font-medium">Data de Emissão:</span> ${orc.notaFiscal.dataEmissao}</p>
+                                    <p><span class="font-medium">Valor:</span> ${formatarMoeda(orc.notaFiscal.valor)}</p>
+                                </div>
+                                <div class="text-right">
+                                    <button onclick="visualizarNotaFiscal(${orc.id})" class="px-4 py-2 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition-colors">
+                                        <i class="fas fa-eye mr-1"></i>Visualizar Anexo
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    ` : ''}
+
+                    ${orc.observacoes ? `
+                        <div class="bg-white dark:bg-gray-700 rounded-lg p-6">
+                            <h3 class="font-bold text-lg mb-3 text-primary">OBSERVAÇÕES</h3>
+                            <p class="text-gray-700 dark:text-gray-300 whitespace-pre-line">${orc.observacoes}</p>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+
+            document.getElementById('modal-visualizar').classList.remove('hidden');
+        }
+
+        // Funções de modal e outras utilidades
+        function fecharModal() {
+            document.getElementById('modal-visualizar').classList.add('hidden');
+            orcamentoAtual = null;
+        }
+
+        function toggleRealizado(id) {
+            if (userRole !== 'admin') { showAlert('Acesso negado.'); return; }
+            const orcamento = orcamentos.find(o => o.id === id);
+            if (orcamento) {
+                orcamento.realizado = !orcamento.realizado;
+                
+                // Se está marcando como realizado e não tem nota fiscal, perguntar se quer adicionar
+                if (orcamento.realizado && !orcamento.notaFiscal) {
+                    showConfirmDialog(
+                        'Deseja adicionar uma nota fiscal para este orçamento realizado?',
+                        () => {
+                            if (apiDisponivel) { fetch(API_BASE + '/api/budgets/' + id, { method:'PATCH', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ realizado: orcamento.realizado }) }) }
+                            salvarDados();
+                            atualizarListaOrcamentos();
+                            atualizarDashboard();
+                            adicionarNotaFiscal(id);
+                        },
+                        () => {
+                            if (apiDisponivel) { fetch(API_BASE + '/api/budgets/' + id, { method:'PATCH', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ realizado: orcamento.realizado }) }) }
+                            salvarDados();
+                            atualizarListaOrcamentos();
+                            atualizarDashboard();
+                            showAlert(`Orçamento marcado como ${orcamento.realizado ? 'realizado' : 'pendente'}.`);
+                        }
+                    );
+                } else {
+                    if (apiDisponivel) { fetch(API_BASE + '/api/budgets/' + id, { method:'PATCH', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ realizado: orcamento.realizado }) }) }
+                    salvarDados();
+                    atualizarListaOrcamentos();
+                    atualizarDashboard();
+                    showAlert(`Orçamento marcado como ${orcamento.realizado ? 'realizado' : 'pendente'}.`);
+                }
+            }
+        }
+
+        // Funções para Nota Fiscal
+        function adicionarNotaFiscal(id) {
+            const orcamento = orcamentos.find(o => o.id === id);
+            if (!orcamento) return;
+            
+            orcamentoAtual = orcamento;
+            document.getElementById('modal-nota-fiscal').classList.remove('hidden');
+            document.getElementById('numero-nota-fiscal').value = '';
+            document.getElementById('data-emissao-nota').value = '';
+            document.getElementById('valor-nota-fiscal').value = orcamento.valorFinal || orcamento.total;
+            document.getElementById('anexo-nota-fiscal').value = '';
+            document.getElementById('preview-nota-fiscal').classList.add('hidden');
+        }
+
+        function previewArquivoNotaFiscal(file) {
+            const previewDiv = document.getElementById('preview-nota-fiscal');
+            const previewImagem = document.getElementById('preview-imagem');
+            const previewPdf = document.getElementById('preview-pdf');
+            const nomeArquivoPdf = document.getElementById('nome-arquivo-pdf');
+            
+            if (!file) {
+                previewDiv.classList.add('hidden');
+                return;
+            }
+            
+            previewDiv.classList.remove('hidden');
+            
+            if (file.type.startsWith('image/')) {
+                previewImagem.src = URL.createObjectURL(file);
+                previewImagem.classList.remove('hidden');
+                previewPdf.classList.add('hidden');
+            } else if (file.type === 'application/pdf') {
+                previewImagem.classList.add('hidden');
+                previewPdf.classList.remove('hidden');
+                nomeArquivoPdf.textContent = file.name;
+            } else {
+                previewDiv.classList.add('hidden');
+            }
+        }
+
+        function confirmarAdicionarNotaFiscal() {
+            if (userRole !== 'admin') { showAlert('Acesso negado.'); return; }
+            const numero = document.getElementById('numero-nota-fiscal').value.trim();
+            const dataEmissao = document.getElementById('data-emissao-nota').value;
+            const valor = parseFloat(document.getElementById('valor-nota-fiscal').value) || 0;
+            const arquivo = document.getElementById('anexo-nota-fiscal').files[0];
+            
+            if (!numero) {
+                showAlert('Número da nota fiscal é obrigatório.');
+                return;
+            }
+            
+            if (!dataEmissao) {
+                showAlert('Data de emissão é obrigatória.');
+                return;
+            }
+            
+            if (!arquivo) {
+                showAlert('Anexo da nota fiscal é obrigatório.');
+                return;
+            }
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const notaFiscal = {
+                    numero: numero,
+                    dataEmissao: new Date(dataEmissao + 'T00:00:00').toLocaleDateString('pt-BR'),
+                    valor: valor,
+                    anexo: e.target.result,
+                    tipoArquivo: arquivo.type,
+                    nomeArquivo: arquivo.name,
+                    dataUpload: new Date().toLocaleDateString('pt-BR')
+                };
+                
+                orcamentoAtual.notaFiscal = notaFiscal;
+                if (apiDisponivel) { fetch(API_BASE + '/api/budgets/' + orcamentoAtual.id, { method:'PATCH', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ notaFiscal: notaFiscal, realizado: true }) }) }
+                salvarDados();
+                fecharModalNotaFiscal();
+                atualizarListaOrcamentos();
+                showAlert('Nota fiscal adicionada com sucesso!');
+                
+                // Se o orçamento não estava marcado como realizado, marcar agora
+                if (!orcamentoAtual.realizado) {
+                    orcamentoAtual.realizado = true;
+                    if (apiDisponivel) { fetch(API_BASE + '/api/budgets/' + orcamentoAtual.id, { method:'PATCH', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ realizado: true }) }) }
+                    salvarDados();
+                    atualizarListaOrcamentos();
+                    atualizarDashboard();
+                }
+            };
+            reader.readAsDataURL(arquivo);
+        }
+
+        function fecharModalNotaFiscal() {
+            document.getElementById('modal-nota-fiscal').classList.add('hidden');
+        }
+
+        function visualizarNotaFiscal(id) {
+            const orcamento = orcamentos.find(o => o.id === id);
+            if (!orcamento || !orcamento.notaFiscal) return;
+            
+            const conteudo = document.getElementById('conteudo-nota-fiscal');
+            const nota = orcamento.notaFiscal;
+            
+            conteudo.innerHTML = `
+                <div class="bg-white dark:bg-gray-700 rounded-lg p-6">
+                    <h3 class="font-bold text-xl mb-4 text-primary">NOTA FISCAL - Nº ${nota.numero}</h3>
+                    <div class="grid md:grid-cols-2 gap-6 mb-6">
+                        <div>
+                            <p><span class="font-medium">Data de Emissão:</span> ${nota.dataEmissao}</p>
+                            <p><span class="font-medium">Valor:</span> ${formatarMoeda(nota.valor)}</p>
+                            <p><span class="font-medium">Data de Upload:</span> ${nota.dataUpload}</p>
+                            <p><span class="font-medium">Arquivo:</span> ${nota.nomeArquivo}</p>
+                        </div>
+                        <div class="text-right">
+                            <button onclick="downloadNotaFiscal(${id})" class="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors">
+                                <i class="fas fa-download mr-1"></i>Download
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="mt-4">
+                        <h4 class="font-semibold mb-2">Visualização:</h4>
+                        ${nota.tipoArquivo.startsWith('image/') ? `
+                            <img src="${nota.anexo}" class="file-preview mx-auto" alt="Nota Fiscal">
+                        ` : nota.tipoArquivo === 'application/pdf' ? `
+                            <div class="text-center p-4 bg-gray-100 dark:bg-gray-800 rounded-lg">
+                                <i class="fas fa-file-pdf text-red-500 text-4xl mb-2"></i>
+                                <p class="text-gray-600 dark:text-gray-400">Arquivo PDF - ${nota.nomeArquivo}</p>
+                                <p class="text-sm text-gray-500 mt-2">Clique em Download para visualizar o arquivo</p>
+                            </div>
+                        ` : `
+                            <div class="text-center p-4 bg-gray-100 dark:bg-gray-800 rounded-lg">
+                                <i class="fas fa-file text-gray-500 text-4xl mb-2"></i>
+                                <p class="text-gray-600 dark:text-gray-400">${nota.nomeArquivo}</p>
+                                <p class="text-sm text-gray-500 mt-2">Clique em Download para visualizar o arquivo</p>
+                            </div>
+                        `}
+                    </div>
+                </div>
+            `;
+            
+            document.getElementById('modal-visualizar-nota').classList.remove('hidden');
+        }
+
+        function fecharModalNotaVisualizacao() {
+            document.getElementById('modal-visualizar-nota').classList.add('hidden');
+        }
+
+        function downloadNotaFiscal(id) {
+            const orcamento = orcamentos.find(o => o.id === id);
+            if (!orcamento || !orcamento.notaFiscal) return;
+            
+            const nota = orcamento.notaFiscal;
+            const link = document.createElement('a');
+            link.href = nota.anexo;
+            link.download = `nota_fiscal_${nota.numero}_${orcamento.nome.replace(/\s+/g, '_')}.${nota.tipoArquivo.split('/')[1] || 'pdf'}`;
+            link.click();
+        }
+
+        function duplicarOrcamento(id) {
+            const original = orcamentos.find(o => o.id === id);
+            if (original) {
+                const duplicado = {
+                    ...original,
+                    id: Date.now(),
+                    numero: String(contadorOrcamento).padStart(3, '0'),
+                    data: new Date().toLocaleDateString('pt-BR'),
+                    realizado: false,
+                    notaFiscal: null // Não duplicar nota fiscal
+                };
+                orcamentos.push(duplicado);
+                contadorOrcamento++;
+                salvarDados();
+                atualizarListaOrcamentos();
+                atualizarDashboard();
+                showAlert('Orçamento duplicado com sucesso!');
+            }
+        }
+
+        function duplicarOrcamentoAtual() {
+            if (orcamentoAtual && orcamentoAtual.id) {
+                duplicarOrcamento(orcamentoAtual.id);
+                fecharModal();
+            }
+        }
+
+        function editarOrcamento(id) {
+            // Implementação simplificada - redireciona para novo orçamento com dados preenchidos
+            const orcamento = orcamentos.find(o => o.id === id);
+            if (!orcamento) return;
+
+            showTab('novo');
+            
+            // Preencher formulário com dados do orçamento
+            setTimeout(() => {
+                document.getElementById('nome-proprietario').value = orcamento.nome;
+                document.getElementById('empresa').value = orcamento.empresa || '';
+                document.getElementById('telefone').value = orcamento.telefone || '';
+                document.getElementById('email').value = orcamento.email || '';
+                document.getElementById('material').value = orcamento.material || '';
+                document.getElementById('dimensoes').value = orcamento.dimensoes || '';
+                document.getElementById('codigo').value = orcamento.codigo || '';
+                document.getElementById('prazo-entrega').value = orcamento.prazoEntrega || '';
+                document.getElementById('observacoes').value = orcamento.observacoes || '';
+                document.getElementById('desconto').value = orcamento.desconto || '';
+
+                // Limpar serviços e adicionar os do orçamento
+                const container = document.getElementById('servicos-container');
+                container.innerHTML = '';
+                
+                orcamento.servicos.forEach((servico, index) => {
+                    if (index === 0) {
+                        adicionarServico();
+                    } else {
+                        adicionarServico();
+                    }
+                    
+                    const ultimoServico = container.lastElementChild;
+                    ultimoServico.querySelector('.servico-desc').value = servico.descricao;
+                    ultimoServico.querySelector('.servico-qty').value = servico.quantidade;
+                    ultimoServico.querySelector('.servico-valor').value = servico.valor;
+                });
+                
+                calcularTotal();
+                
+                // Remover orçamento original para evitar duplicação
+                const index = orcamentos.findIndex(o => o.id === id);
+                if (index !== -1) {
+                    orcamentos.splice(index, 1);
+                    salvarDados();
+                }
+
+                showAlert('Orçamento carregado para edição. Faça as alterações e salve novamente.');
+            }, 100);
+        }
+
+        function excluirOrcamento(id) {
+            showConfirmDialog('Tem certeza que deseja excluir este orçamento? Esta ação não pode ser desfeita.', () => {
+                const index = orcamentos.findIndex(o => o.id === id);
+                if (index !== -1) {
+                    orcamentos.splice(index, 1);
+                    salvarDados();
+                    atualizarListaOrcamentos();
+                    atualizarDashboard();
+                    showAlert('Orçamento excluído com sucesso!');
+                }
+            });
+        }
+
+        // Funções de Template
+        function salvarTemplate() {
+            const servicos = [];
+            document.querySelectorAll('.servico-item').forEach(item => {
+                const desc = item.querySelector('.servico-desc').value;
+                const qty = parseInt(item.querySelector('.servico-qty').value) || 1;
+                const valor = parseFloat(item.querySelector('.servico-valor').value) || 0;
+                
+                if (desc.trim()) {
+                    servicos.push({
+                        descricao: desc.trim(),
+                        quantidade: qty,
+                        valor: valor
+                    });
+                }
+            });
+
+            if (servicos.length === 0) {
+                showAlert('Adicione pelo menos um serviço para salvar como template.');
+                return;
+            }
+
+            document.getElementById('modal-template').classList.remove('hidden');
+        }
+
+        function confirmarSalvarTemplate() {
+            const nome = document.getElementById('nome-template').value.trim();
+            const descricao = document.getElementById('descricao-template').value.trim();
+
+            if (!nome) {
+                showAlert('Nome do template é obrigatório.');
+                return;
+            }
+
+            const servicos = [];
+            document.querySelectorAll('.servico-item').forEach(item => {
+                const desc = item.querySelector('.servico-desc').value;
+                const qty = parseInt(item.querySelector('.servico-qty').value) || 1;
+                const valor = parseFloat(item.querySelector('.servico-valor').value) || 0;
+                
+                if (desc.trim()) {
+                    servicos.push({
+                        descricao: desc.trim(),
+                        quantidade: qty,
+                        valor: valor
+                    });
+                }
+            });
+
+            const template = {
+                id: Date.now(),
+                nome: nome,
+                descricao: descricao,
+                servicos: servicos,
+                data: new Date().toLocaleDateString('pt-BR')
+            };
+
+            templates.push(template);
+            salvarDados();
+            
+            fecharModalTemplate();
+            showAlert('Template salvo com sucesso!');
+        }
+
+        function fecharModalTemplate() {
+            document.getElementById('modal-template').classList.add('hidden');
+            document.getElementById('nome-template').value = '';
+            document.getElementById('descricao-template').value = '';
+        }
+
+        function carregarTemplate() {
+            if (templates.length === 0) {
+                showAlert('Nenhum template disponível. Crie templates na aba Templates.');
+                return;
+            }
+
+            // Criar um select simples para escolher template
+            const options = templates.map(t => `<option value="${t.id}">${t.nome}</option>`).join('');
+            const templateSelect = `
+                <select id="select-template" class="w-full p-3 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-base mb-4">
+                    <option value="">Selecione um template</option>
+                    ${options}
+                </select>
+            `;
+
+            showCustomDialog('Carregar Template', templateSelect, () => {
+                const templateId = parseInt(document.getElementById('select-template').value);
+                if (!templateId) return;
+
+                const template = templates.find(t => t.id === templateId);
+                if (!template) return;
+
+                // Limpar serviços atuais
+                const container = document.getElementById('servicos-container');
+                container.innerHTML = '';
+
+                // Adicionar serviços do template
+                template.servicos.forEach(servico => {
+                    adicionarServico();
+                    const ultimoServico = container.lastElementChild;
+                    ultimoServico.querySelector('.servico-desc').value = servico.descricao;
+                    ultimoServico.querySelector('.servico-qty').value = servico.quantidade;
+                    ultimoServico.querySelector('.servico-valor').value = servico.valor;
+                });
+
+                calcularTotal();
+                showAlert('Template carregado com sucesso!');
+            });
+        }
+
+        function atualizarListaTemplates() {
+            const container = document.getElementById('lista-templates');
+            if (templates.length === 0) {
+                container.innerHTML = `
+                    <div class="col-span-full text-center py-12">
+                        <i class="fas fa-templates fa-4x text-gray-300 mb-4"></i>
+                        <h3 class="text-xl font-semibold text-gray-500 mb-2">Nenhum template criado</h3>
+                        <p class="text-gray-400 mb-4">Crie templates para agilizar seus orçamentos</p>
+                        <button onclick="criarNovoTemplate()" class="px-6 py-3 bg-primary text-white rounded-lg hover:bg-opacity-90 transition-colors">
+                            Criar Primeiro Template
+                        </button>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = templates.map(template => `
+                <div class="bg-white dark:bg-gray-700 rounded-lg p-6 border border-gray-200 dark:border-gray-600">
+                    <h3 class="font-bold text-lg mb-2">${template.nome}</h3>
+                    <p class="text-gray-600 dark:text-gray-400 text-sm mb-3">${template.descricao || 'Sem descrição'}</p>
+                    <div class="text-xs text-gray-500 mb-4">
+                        Criado em: ${template.data} • ${template.servicos.length} serviço${template.servicos.length > 1 ? 's' : ''}
+                    </div>
+                    <div class="space-y-2 mb-4">
+                        ${template.servicos.slice(0, 3).map(s => `
+                            <div class="text-sm bg-gray-50 dark:bg-gray-800 p-2 rounded">
+                                ${s.descricao} - ${s.quantidade}x ${formatarMoeda(s.valor)}
+                            </div>
+                        `).join('')}
+                        ${template.servicos.length > 3 ? `
+                            <div class="text-sm text-gray-500">
+                                +${template.servicos.length - 3} mais...
+                            </div>
+                        ` : ''}
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="usarTemplate(${template.id})" class="flex-1 px-3 py-2 bg-primary text-white rounded text-sm hover:bg-opacity-90 transition-colors">
+                            <i class="fas fa-play mr-1"></i>Usar
+                        </button>
+                        <button onclick="excluirTemplate(${template.id})" class="px-3 py-2 bg-red-500 text-white rounded text-sm hover:bg-red-600 transition-colors">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function criarNovoTemplate() {
+            showTab('novo');
+            showAlert('Crie um orçamento com os serviços desejados e clique em "Salvar como Template".');
+        }
+
+        function usarTemplate(id) {
+            const template = templates.find(t => t.id === id);
+            if (!template) return;
+
+            showTab('novo');
+            
+            setTimeout(() => {
+                const container = document.getElementById('servicos-container');
+                container.innerHTML = '';
+
+                template.servicos.forEach(servico => {
+                    adicionarServico();
+                    const ultimoServico = container.lastElementChild;
+                    ultimoServico.querySelector('.servico-desc').value = servico.descricao;
+                    ultimoServico.querySelector('.servico-qty').value = servico.quantidade;
+                    ultimoServico.querySelector('.servico-valor').value = servico.valor;
+                });
+
+                calcularTotal();
+                showAlert('Template aplicado! Complete os dados do cliente e salve o orçamento.');
+            }, 100);
+        }
+
+        function excluirTemplate(id) {
+            showConfirmDialog('Tem certeza que deseja excluir este template?', () => {
+                const index = templates.findIndex(t => t.id === id);
+                if (index !== -1) {
+                    templates.splice(index, 1);
+                    salvarDados();
+                    atualizarListaTemplates();
+                    showAlert('Template excluído com sucesso!');
+                }
+            });
+        }
+
+        // Funções de Cliente
+        function atualizarListaClientes() {
+            const container = document.getElementById('lista-clientes');
+            
+            const clientesUnicos = clientes.filter((cliente, index, arr) => 
+                arr.findIndex(c => c.nome.toLowerCase() === cliente.nome.toLowerCase() && 
+                               (c.empresa || '').toLowerCase() === (cliente.empresa || '').toLowerCase()) === index
+            );
+
+            if (clientesUnicos.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center py-12">
+                        <i class="fas fa-users fa-4x text-gray-300 mb-4"></i>
+                        <h3 class="text-xl font-semibold text-gray-500 mb-2">Nenhum cliente cadastrado</h3>
+                        <p class="text-gray-400">Os clientes são adicionados automaticamente ao criar orçamentos</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = clientesUnicos.map(cliente => {
+                const orcamentosCliente = orcamentos.filter(o => 
+                    o.nome.toLowerCase() === cliente.nome.toLowerCase()
+                );
+                const totalOrcamentos = orcamentosCliente.length;
+                const valorTotal = orcamentosCliente.reduce((sum, o) => sum + (o.valorFinal || o.total), 0);
+
+                return `
+                    <div class="bg-white dark:bg-gray-700 rounded-lg p-6 border border-gray-200 dark:border-gray-600">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <h3 class="font-bold text-lg">${cliente.nome}</h3>
+                                ${cliente.empresa ? `<p class="text-gray-600 dark:text-gray-400 font-medium">${cliente.empresa}</p>` : ''}
+                                <div class="mt-2 space-y-1 text-sm text-gray-600 dark:text-gray-400">
+                                    ${cliente.telefone ? `<p><i class="fas fa-phone mr-2"></i>${cliente.telefone}</p>` : ''}
+                                    ${cliente.email ? `<p><i class="fas fa-envelope mr-2"></i>${cliente.email}</p>` : ''}
+                                </div>
+                            </div>
+                            <div class="text-right">
+                                <div class="text-2xl font-bold text-primary">${totalOrcamentos}</div>
+                                <div class="text-sm text-gray-500">orçamento${totalOrcamentos > 1 ? 's' : ''}</div>
+                                <div class="text-lg font-semibold mt-1">${formatarMoeda(valorTotal)}</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Funções de Exportação
+        function exportarDados() {
+            const dados = {
+                orcamentos: orcamentos,
+                clientes: clientes,
+                templates: templates,
+                orcamentosMateriaPrima: orcamentosMateriaPrima,
+                contador: contadorOrcamento,
+                dataExportacao: new Date().toISOString()
+            };
+
+            const blob = new Blob([JSON.stringify(dados, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `tornearia_backup_${new Date().toISOString().split('T')[0]}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+            
+            showAlert('Dados exportados com sucesso!');
+        }
+
+        // Funções de PDF e Compartilhamento
+        function imprimirOrcamento() {
+            if (!orcamentoAtual) return;
+
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            
+            // Configuração de fonte e cabeçalho
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(20);
+            doc.text('ORÇAMENTO', 20, 20);
+            
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(10);
+            doc.text(`Nº ${orcamentoAtual.numero}`, 150, 20);
+            doc.text(`Data: ${orcamentoAtual.data}`, 150, 25);
+            doc.text(`Status: ${orcamentoAtual.realizado ? 'REALIZADO' : 'PENDENTE'}`, 150, 30);
+
+            // Dados do cliente
+            let y = 40;
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(12);
+            doc.text('CLIENTE', 20, y);
+            y += 5;
+            
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(10);
+            doc.text(`Nome: ${orcamentoAtual.nome}`, 20, y);
+            y += 5;
+            
+            if (orcamentoAtual.empresa) {
+                doc.text(`Empresa: ${orcamentoAtual.empresa}`, 20, y);
+                y += 5;
+            }
+            if (orcamentoAtual.telefone) {
+                doc.text(`Telefone: ${orcamentoAtual.telefone}`, 20, y);
+                y += 5;
+            }
+            if (orcamentoAtual.email) {
+                doc.text(`E-mail: ${orcamentoAtual.email}`, 20, y);
+                y += 5;
+            }
+
+            // Dados da peça/material
+            if (orcamentoAtual.material || orcamentoAtual.dimensoes || orcamentoAtual.codigo) {
+                y += 5;
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(12);
+                doc.text('PEÇA/MATERIAL', 20, y);
+                y += 5;
+                
+                doc.setFont('helvetica', 'normal');
+                doc.setFontSize(10);
+                if (orcamentoAtual.material) {
+                    doc.text(`Material: ${orcamentoAtual.material}`, 20, y);
+                    y += 5;
+                }
+                if (orcamentoAtual.dimensoes) {
+                    doc.text(`Dimensões: ${orcamentoAtual.dimensoes}`, 20, y);
+                    y += 5;
+                }
+                if (orcamentoAtual.codigo) {
+                    doc.text(`Desenho: ${orcamentoAtual.codigo}`, 20, y);
+                    y += 5;
+                }
+            }
+
+            // Prazo de entrega
+            if (orcamentoAtual.prazoEntrega) {
+                y += 2;
+                doc.setFont('helvetica', 'bold');
+                doc.text(`Prazo de Entrega: ${new Date(orcamentoAtual.prazoEntrega + 'T00:00:00').toLocaleDateString('pt-BR')}`, 20, y);
+                y += 5;
+            }
+
+            // Serviços
+            y += 10;
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(12);
+            doc.text('SERVIÇOS', 20, y);
+            y += 5;
+
+            // Cabeçalho da tabela
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(9);
+            doc.text('Descrição', 20, y);
+            doc.text('Qtd', 120, y);
+            doc.text('Valor Unit.', 140, y);
+            doc.text('Total', 175, y);
+            y += 3;
+            doc.line(20, y, 190, y);
+            y += 3;
+
+            // Itens
+            doc.setFont('helvetica', 'normal');
+            orcamentoAtual.servicos.forEach(servico => {
+                const descricaoLimitada = servico.descricao.length > 50 ? 
+                    servico.descricao.substring(0, 47) + '...' : 
+                    servico.descricao;
+                doc.text(descricaoLimitada, 20, y);
+                doc.text(servico.quantidade.toString(), 120, y);
+                doc.text(`R$ ${servico.valor.toFixed(2)}`, 140, y);
+                doc.text(`R$ ${servico.total.toFixed(2)}`, 175, y);
+                y += 5;
+            });
+
+            // Total e desconto
+            y += 3;
+            doc.line(20, y, 190, y);
+            y += 5;
+            
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(11);
+            doc.text(`SUBTOTAL: R$ ${orcamentoAtual.total.toFixed(2)}`, 120, y);
+            
+            if (orcamentoAtual.desconto > 0) {
+                y += 5;
+                doc.setTextColor(0, 128, 0);
+                doc.text(`DESCONTO (${orcamentoAtual.desconto}%): -R$ ${(orcamentoAtual.total * orcamentoAtual.desconto / 100).toFixed(2)}`, 120, y);
+                doc.setTextColor(0, 0, 0);
+            }
+            
+            y += 5;
+            doc.setFontSize(14);
+            doc.text(`TOTAL GERAL: R$ ${(orcamentoAtual.valorFinal || orcamentoAtual.total).toFixed(2)}`, 120, y);
+
+            // Nota Fiscal
+            if (orcamentoAtual.notaFiscal) {
+                y += 10;
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(12);
+                doc.text('NOTA FISCAL', 20, y);
+                y += 5;
+                
+                doc.setFont('helvetica', 'normal');
+                doc.setFontSize(10);
+                doc.text(`Número: ${orcamentoAtual.notaFiscal.numero}`, 20, y);
+                y += 5;
+                doc.text(`Data de Emissão: ${orcamentoAtual.notaFiscal.dataEmissao}`, 20, y);
+                y += 5;
+                doc.text(`Valor: R$ ${orcamentoAtual.notaFiscal.valor.toFixed(2)}`, 20, y);
+            }
+
+            // Observações
+            if (orcamentoAtual.observacoes) {
+                y += 10;
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(12);
+                doc.text('OBSERVAÇÕES:', 20, y);
+                y += 5;
+                doc.setFont('helvetica', 'normal');
+                doc.setFontSize(10);
+                const lines = doc.splitTextToSize(orcamentoAtual.observacoes, 170);
+                doc.text(lines, 20, y);
+            }
+
+            const nomeArquivo = `orcamento_${orcamentoAtual.numero}_${orcamentoAtual.nome.replace(/\s+/g, '_')}_${orcamentoAtual.data.replace(/\//g, '-')}.pdf`;
+            doc.save(nomeArquivo);
+        }
+
+        async function compartilharOrcamento() {
+            if (!orcamentoAtual) return;
+
+            let texto = `
+🔧 ORÇAMENTO DE TORNEARIA - Nº ${orcamentoAtual.numero}
+
+📅 Data: ${orcamentoAtual.data}
+${orcamentoAtual.prazoEntrega ? `⏰ Prazo: ${new Date(orcamentoAtual.prazoEntrega + 'T00:00:00').toLocaleDateString('pt-BR')}\n` : ''}
+
+👤 CLIENTE:
+Nome: ${orcamentoAtual.nome}
+${orcamentoAtual.empresa ? `Empresa: ${orcamentoAtual.empresa}\n` : ''}
+${orcamentoAtual.telefone ? `Telefone: ${orcamentoAtual.telefone}\n` : ''}
+
+🔩 PEÇA/MATERIAL:
+${orcamentoAtual.material ? `Material: ${orcamentoAtual.material}\n` : ''}
+${orcamentoAtual.dimensoes ? `Dimensões: ${orcamentoAtual.dimensoes}\n` : ''}
+${orcamentoAtual.codigo ? `Desenho: ${orcamentoAtual.codigo}\n` : ''}
+
+⚙️ SERVIÇOS:
+${orcamentoAtual.servicos.map(s => `• ${s.descricao} - ${s.quantidade}x ${formatarMoeda(s.valor)} = ${formatarMoeda(s.total)}`).join('\n')}
+
+💰 VALORES:
+Subtotal: ${formatarMoeda(orcamentoAtual.total)}
+${orcamentoAtual.desconto > 0 ? `Desconto (${orcamentoAtual.desconto}%): -${formatarMoeda(orcamentoAtual.total * orcamentoAtual.desconto / 100)}\n` : ''}
+TOTAL GERAL: ${formatarMoeda(orcamentoAtual.valorFinal || orcamentoAtual.total)}
+
+📋 Status: ${orcamentoAtual.realizado ? '✅ REALIZADO' : '⏳ PENDENTE'}
+            `;
+
+            // Adicionar informações da nota fiscal se existir
+            if (orcamentoAtual.notaFiscal) {
+                texto += `\n🧾 NOTA FISCAL:
+Número: ${orcamentoAtual.notaFiscal.numero}
+Data de Emissão: ${orcamentoAtual.notaFiscal.dataEmissao}
+Valor: ${formatarMoeda(orcamentoAtual.notaFiscal.valor)}`;
+            }
+
+            // Adicionar observações
+            if (orcamentoAtual.observacoes) {
+                texto += `\n\n📝 OBSERVAÇÕES:\n${orcamentoAtual.observacoes}`;
+            }
+
+            if (navigator.share) {
+                try {
+                    const files = [];
+                    
+                    // Criar arquivo do orçamento
+                    const orcamentoBlob = new Blob([texto], { type: 'text/plain' });
+                    const orcamentoFile = new File([orcamentoBlob], `orcamento_${orcamentoAtual.numero}.txt`, { type: 'text/plain' });
+                    files.push(orcamentoFile);
+                    
+                    // Adicionar nota fiscal se existir
+                    if (orcamentoAtual.notaFiscal) {
+                        const response = await fetch(orcamentoAtual.notaFiscal.anexo);
+                        const notaBlob = await response.blob();
+                        const notaFile = new File([notaBlob], `nota_fiscal_${orcamentoAtual.notaFiscal.numero}.${orcamentoAtual.notaFiscal.tipoArquivo.split('/')[1] || 'pdf'}`, { type: orcamentoAtual.notaFiscal.tipoArquivo });
+                        files.push(notaFile);
+                    }
+                    
+                    await navigator.share({
+                        title: `Orçamento ${orcamentoAtual.numero} - ${orcamentoAtual.nome}`,
+                        text: texto,
+                        files: files
+                    });
+                } catch (err) {
+                    if (err.name !== 'AbortError') {
+                        copiarTexto(texto);
+                    }
+                }
+            } else {
+                copiarTexto(texto);
+            }
+        }
+
+        function copiarTexto(texto) {
+            navigator.clipboard.writeText(texto).then(() => {
+                showAlert('Orçamento copiado para a área de transferência!');
+            }).catch(() => {
+                showAlert('Não foi possível copiar automaticamente.');
+            });
+        }
+
+        // Funções de configurações
+        function importarDados() {
+            const input = document.getElementById('importar-dados');
+            const file = input.files[0];
+            
+            if (!file) {
+                showAlert('Selecione um arquivo para importar.');
+                return;
+            }
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const dados = JSON.parse(e.target.result);
+                    
+                    if (dados.orcamentos && dados.clientes && dados.templates) {
+                        showConfirmDialog('Tem certeza que deseja importar estes dados? Os dados atuais serão substituídos.', () => {
+                            orcamentos = dados.orcamentos;
+                            clientes = dados.clientes;
+                            templates = dados.templates;
+                            orcamentosMateriaPrima = dados.orcamentosMateriaPrima || [];
+                            contadorOrcamento = dados.contador || contadorOrcamento;
+                            
+                            salvarDados();
+                            showAlert('Dados importados com sucesso!');
+                            showTab('dashboard');
+                        });
+                    } else {
+                        showAlert('Arquivo inválido. Certifique-se de que é um backup válido do sistema.');
+                    }
+                } catch (error) {
+                    showAlert('Erro ao ler o arquivo. Certifique-se de que é um arquivo JSON válido.');
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function toggleDarkMode() {
+            document.documentElement.classList.toggle('dark');
+            showAlert('Modo escuro ' + (document.documentElement.classList.contains('dark') ? 'ativado' : 'desativado'));
+        }
+
+        function limparTodosDados() {
+            showConfirmDialog('Tem certeza que deseja limpar todos os dados? Esta ação não pode ser desfeita.', () => {
+                orcamentos = [];
+                clientes = [];
+                templates = [];
+                orcamentosMateriaPrima = [];
+                contadorOrcamento = 1;
+                
+                salvarDados();
+                showAlert('Todos os dados foram limpos com sucesso!');
+                showTab('dashboard');
+            });
+        }
+
+        // Funções de alerta customizadas melhoradas
+        function showAlert(message) {
+            const modal = document.createElement('div');
+            modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 animate-fade-in';
+            modal.innerHTML = `
+                <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-2xl max-w-sm w-full mx-4 animate-slide-up">
+                    <div class="flex items-center mb-4">
+                        <i class="fas fa-info-circle text-blue-500 text-xl mr-3"></i>
+                        <h3 class="font-semibold">Informação</h3>
+                    </div>
+                    <p class="text-gray-700 dark:text-gray-300 mb-6">${message}</p>
+                    <div class="flex justify-end">
+                        <button class="px-6 py-2 bg-primary text-white hover:bg-opacity-90 rounded-lg transition-colors font-medium" onclick="this.closest('.fixed').remove()">OK</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+            setTimeout(() => {
+                if (modal.parentNode) {
+                    modal.remove();
+                }
+            }, 5000);
+        }
+
+        function showConfirmDialog(message, onConfirm, onCancel = null) {
+            const modal = document.createElement('div');
+            modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 animate-fade-in';
+            modal.innerHTML = `
+                <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-2xl max-w-sm w-full mx-4 animate-slide-up">
+                    <div class="flex items-center mb-4">
+                        <i class="fas fa-exclamation-triangle text-yellow-500 text-xl mr-3"></i>
+                        <h3 class="font-semibold">Confirmação</h3>
+                    </div>
+                    <p class="text-gray-700 dark:text-gray-300 mb-6">${message}</p>
+                    <div class="flex justify-end space-x-3">
+                        <button class="px-4 py-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors" onclick="this.closest('.fixed').remove(); ${onCancel ? `(${onCancel.toString()})()` : ''}">Cancelar</button>
+                        <button class="px-6 py-2 bg-red-500 text-white hover:bg-red-600 rounded-lg transition-colors font-medium" onclick="this.closest('.fixed').remove(); (${onConfirm.toString()})()">Confirmar</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+
+        function showCustomDialog(title, content, onConfirm) {
+            const modal = document.createElement('div');
+            modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 animate-fade-in';
+            modal.innerHTML = `
+                <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-2xl max-w-md w-full mx-4 animate-slide-up">
+                    <h3 class="font-semibold text-lg mb-4">${title}</h3>
+                    <div class="mb-6">${content}</div>
+                    <div class="flex justify-end space-x-3">
+                        <button class="px-4 py-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors" onclick="this.closest('.fixed').remove()">Cancelar</button>
+                        <button class="px-6 py-2 bg-primary text-white hover:bg-opacity-90 rounded-lg transition-colors font-medium" onclick="this.closest('.fixed').remove(); (${onConfirm.toString()})()">Confirmar</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+
+        // Fechar modais ao clicar fora
+        document.addEventListener('click', function(e) {
+            if (e.target.classList.contains('fixed')) {
+                e.target.remove();
+            }
+        });
+    </script>
+</body>
+</html>
